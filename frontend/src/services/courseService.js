@@ -59,8 +59,12 @@ export const notificationService = {
 
 export const quizService = {
   create: (data) => api.post('/quizzes', data),
+  update: (id, data) => api.put(`/quizzes/${id}`, data),
   get: (id) => api.get(`/quizzes/${id}`),
+  getByLesson: (lessonId) => api.get(`/quizzes/lesson/${lessonId}`),
   addQuestion: (data) => api.post('/quizzes/questions', data),
+  updateQuestion: (id, data) => api.put(`/quizzes/questions/${id}`, data),
+  deleteQuestion: (id) => api.delete(`/quizzes/questions/${id}`),
   submit: (data) => api.post('/quizzes/submit', data),
   getResults: (quizId) => api.get(`/quizzes/${quizId}/results`),
 };
