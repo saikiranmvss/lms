@@ -1,0 +1,399 @@
+Use this as a high-detail generation prompt for [Replit](https://replit.com?utm_source=chatgpt.com) or [Lovable](https://lovable.dev?utm_source=chatgpt.com).
+It is structured to force the AI builder to generate a production-style LMS architecture instead of a basic CRUD app.
+
+---
+
+# FULL PROMPT
+
+Build a modern full-stack Learning Management System (LMS) web application similar to platforms like Udemy, Teachable, and Tutor LMS Pro.
+
+The application must be production-ready in architecture, scalable, responsive, cleanly designed, and modular.
+
+Use:
+
+* Frontend: React.js + Vite
+* Backend: Node.js + Express.js
+* Database: MySQL ONLY
+* ORM: Prisma ORM or Sequelize with proper migrations
+* Authentication: JWT Auth with refresh tokens
+* Styling: TailwindCSS + modern UI components
+* State Management: Zustand or Redux Toolkit
+* Video Player: secure streaming support
+* API Architecture: REST API
+* Deployment-ready folder structure
+* Use TypeScript if possible
+
+IMPORTANT:
+Generate ALL major pages, dashboards, routes, database schema, migrations, API endpoints, reusable components, and role-based access control.
+
+The design must feel modern, premium, clean, and professional like Udemy or Teachable.
+
+---
+
+## APPLICATION ROLES
+
+Implement 3 roles:
+
+1. Student
+2. Instructor
+3. Admin
+
+Each role must have its own dashboard and permissions.
+
+---
+
+## AUTHENTICATION FEATURES
+
+Create:
+
+* Login page
+* Registration page
+* Forgot password
+* Reset password
+* Email verification
+* JWT authentication
+* Refresh token handling
+* Remember me
+* Protected routes
+* Role-based middleware
+* Profile settings page
+* Change password page
+
+---
+
+## MAIN STUDENT FEATURES
+
+Students must be able to:
+
+* Browse courses
+* Search courses
+* Filter by category
+* View course landing pages
+* Watch lessons
+* Track progress
+* Take quizzes
+* Submit assignments
+* Ask questions
+* Add reviews and ratings
+* Bookmark/Wishlist courses
+* Continue watching
+* Download resources
+* View certificates
+* Receive notifications
+* View enrolled courses dashboard
+* Resume unfinished lessons
+
+---
+
+## MAIN INSTRUCTOR FEATURES
+
+Instructors must be able to:
+
+* Create courses
+* Edit courses
+* Delete courses
+* Publish/unpublish courses
+* Upload thumbnails
+* Upload videos
+* Create sections/modules
+* Add lessons
+* Reorder lessons with drag-and-drop
+* Add quizzes
+* Add assignments
+* Add downloadable resources
+* Preview course
+* View enrolled students
+* View analytics
+* Answer student questions
+* Create coupons
+* Manage pricing
+* View earnings dashboard
+
+---
+
+## ADMIN FEATURES
+
+Admin panel must include:
+
+* Dashboard analytics
+* User management
+* Instructor approval
+* Course moderation
+* Category management
+* Revenue analytics
+* Reports system
+* Platform settings
+* CMS pages management
+* Banner management
+* Notifications management
+* Payment settings
+* Site branding settings
+* Review moderation
+* Course approval workflow
+* User suspension
+* Admin roles and permissions
+
+---
+
+## IMPORTANT MAIN PAGES
+
+Generate COMPLETE pages for all of these:
+
+PUBLIC PAGES:
+
+1. Home page
+2. Courses listing page
+3. Course details/landing page
+4. Instructor profile page
+5. Pricing page
+6. About page
+7. Contact page
+8. FAQ page
+9. Blog page
+10. Blog details page
+
+AUTH PAGES:
+11. Login page
+12. Register page
+13. Forgot password page
+14. Reset password page
+
+STUDENT PAGES:
+15. Student dashboard
+16. My courses page
+17. Course watch page
+18. Quiz page
+19. Assignment submission page
+20. Wishlist page
+21. Certificates page
+22. Notifications page
+23. Student profile settings
+
+INSTRUCTOR PAGES:
+24. Instructor dashboard
+25. Create course page
+26. Edit course page
+27. Course curriculum builder
+28. Lesson editor page
+29. Quiz builder page
+30. Student management page
+31. Earnings page
+32. Instructor analytics page
+
+ADMIN PAGES:
+33. Admin dashboard
+34. User management page
+35. Course moderation page
+36. Categories management page
+37. Revenue analytics page
+38. Platform settings page
+39. Reports page
+40. CMS management page
+
+---
+
+## VIDEO WATCH EXPERIENCE
+
+Create a professional video learning experience like Udemy:
+
+* Left sidebar curriculum
+* Video player on top
+* Lesson tabs
+* Notes tab
+* Q&A tab
+* Resources tab
+* Progress tracking
+* Auto next lesson
+* Mark lesson complete
+* Fullscreen mode
+* Playback speed control
+* Mobile responsive player
+
+---
+
+## QUIZ SYSTEM
+
+Include:
+
+* MCQ quizzes
+* Multiple answer quizzes
+* Timed quizzes
+* Quiz attempts
+* Instant grading
+* Quiz results page
+* Passing percentage
+* Quiz analytics
+
+---
+
+## COURSE BUILDER
+
+Instructor curriculum builder must support:
+
+* Sections/modules
+* Lessons
+* Video lessons
+* Text lessons
+* Attachments
+* Draggable ordering
+* Preview lesson
+* Draft and publish states
+
+---
+
+## DATABASE DESIGN
+
+Create proper MySQL schema and migrations for:
+
+* users
+* roles
+* courses
+* categories
+* enrollments
+* lessons
+* sections
+* quizzes
+* quiz_questions
+* assignments
+* certificates
+* reviews
+* wishlists
+* notifications
+* transactions
+* coupons
+* progress_tracking
+* discussions
+* lesson_resources
+
+Use proper foreign keys and indexing.
+
+---
+
+## UI/UX REQUIREMENTS
+
+Use:
+
+* Modern dashboard layouts
+* Sidebar navigation
+* Top navbar
+* Responsive mobile layouts
+* Clean cards
+* Professional typography
+* Skeleton loaders
+* Toast notifications
+* Modal dialogs
+* Empty states
+* Error states
+* Loading states
+
+Design style should feel:
+
+* premium
+* modern
+* SaaS quality
+* clean like Teachable/Udemy
+
+---
+
+## API REQUIREMENTS
+
+Generate:
+
+* Clean REST API structure
+* Controllers
+* Services
+* Middleware
+* Validation
+* Error handling
+* Authentication middleware
+* Role permissions
+* Pagination
+* Filtering
+* Search APIs
+
+---
+
+## ADDITIONAL FEATURES
+
+Include:
+
+* Dark/light mode
+* Global search
+* Notification system
+* Email templates
+* SEO-friendly routes
+* Slug-based course URLs
+* Course reviews
+* Ratings system
+* Instructor verification
+* Course progress saving
+* Recently viewed courses
+* Recommended courses
+* Related courses
+
+---
+
+## PROJECT STRUCTURE
+
+Generate complete production-level folder structure:
+
+Frontend:
+
+* components
+* pages
+* layouts
+* hooks
+* services
+* store
+* routes
+* utils
+
+Backend:
+
+* controllers
+* routes
+* middleware
+* services
+* prisma/sequelize
+* migrations
+* validations
+* utils
+
+---
+
+## OUTPUT EXPECTATION
+
+Generate:
+
+* Complete frontend pages
+* Backend APIs
+* Database schema
+* Migrations
+* Seed data
+* Routing structure
+* Reusable components
+* Authentication flow
+* Dashboard layouts
+* Modern responsive UI
+* Proper folder architecture
+
+Do NOT generate a basic CRUD app.
+
+Generate a polished, scalable LMS SaaS platform with professional UX similar to Udemy, Teachable, and Tutor LMS Pro.
+
+The final result should look startup-investor ready and production quality.
+
+---
+
+If you want, I can also give you:
+
+1. A SUPER-ADVANCED version (enterprise SaaS LMS prompt)
+2. A Lovable-optimized version
+3. A Replit AI-optimized version
+4. A Cursor AI coding prompt
+5. Full database schema prompt
+6. UI-only frontend prompt
+7. Backend-only architecture prompt
+8. Mobile app version prompt
+9. AI-powered LMS features prompt
+10. Multi-tenant LMS SaaS version
