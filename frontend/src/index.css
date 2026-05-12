@@ -86,7 +86,7 @@
 .course-video-frame video {
   object-fit: contain;
 }
-/* Premium lesson player shell (sizes set inline in CourseWatch) */
+/* Premium lesson player shell (static size via .lesson-video-hero in CourseWatch) */
 .lesson-video-dynamic {
   position: relative;
   margin-inline: auto;
@@ -98,10 +98,11 @@
     0 0 0 1px rgba(255, 255, 255, 0.06),
     0 24px 48px -12px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition:
-    max-height 0.5s cubic-bezier(0.32, 0.72, 0, 1),
-    width 0.5s cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 0.35s ease;
+  transition: box-shadow 0.35s ease;
+}
+.lesson-video-hero.lesson-video-dynamic {
+  max-height: min(58dvh, 520px);
+  width: min(100%, calc(min(58dvh, 520px) * 16 / 9));
 }
 .lesson-video-dynamic > * {
   position: absolute;
@@ -145,4 +146,18 @@
 }
 .lesson-watch-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.55);
+}
+
+@keyframes lesson-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.lesson-content-enter {
+  animation: lesson-content-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

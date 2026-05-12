@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ChevronLeft, ChevronUp, CheckCircle, Circle, ChevronDown, ChevronRight,
+  ChevronLeft, CheckCircle, Circle, ChevronDown, ChevronRight,
   MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle, Video, BookOpen, Loader2,
 } from 'lucide-react';
 import { courseService, enrollmentService, discussionService, noteService } from '../../services/courseService.js';
@@ -13,9 +13,6 @@ import LessonVideoPlayer from '../../components/student/LessonVideoPlayer.jsx';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
-/** Pixels of scroll in the lesson column to fully tuck the hero video (0→1 progress). */
-const LESSON_COLLAPSE_SCROLL_PX = 280;
-
 export default function CourseWatch() {
   const { slug } = useParams();
   const queryClient = useQueryClient();
@@ -25,13 +22,7 @@ export default function CourseWatch() {
   const [noteContent, setNoteContent] = useState('');
   const [questionContent, setQuestionContent] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [lessonScrollY, setLessonScrollY] = useState(0);
-  const [viewportH, setViewportH] = useState(
-    typeof window !== 'undefined' ? window.innerHeight : 800
-  );
-  const lessonMainScrollRef = useRef(null);
-  const videoHeroRef = useRef(null);
-  const lessonScrollRafRef = useRef(0);
+  const lessonContentScrollRef = useRef(null);
 
   const { data: courseData, isLoading: courseLoading } = useQuery({
     queryKey: ['course-watch', slug],
@@ -68,46 +59,8 @@ export default function CourseWatch() {
   }, [currentLesson?.id]);
 
   useEffect(() => {
-    const ro = () => setViewportH(window.innerHeight);
-    ro();
-    window.addEventListener('resize', ro);
-    return () => window.removeEventListener('resize', ro);
-  }, []);
-
-  useEffect(() => {
-    lessonMainScrollRef.current?.scrollTo(0, 0);
-    setLessonScrollY(0);
+    lessonContentScrollRef.current?.scrollTo(0, 0);
   }, [currentLesson?.id, activeTab]);
-
-  useEffect(() => {
-    return () => cancelAnimationFrame(lessonScrollRafRef.current);
-  }, []);
-
-  const handleLessonScroll = useCallback(() => {
-    const el = lessonMainScrollRef.current;
-    if (!el) return;
-    cancelAnimationFrame(lessonScrollRafRef.current);
-    lessonScrollRafRef.current = requestAnimationFrame(() => {
-      setLessonScrollY(el.scrollTop);
-    });
-  }, []);
-
-  /** Forward wheel from the video hero (incl. iframe dead zones) into the unified lesson scroller. */
-  useEffect(() => {
-    const hero = videoHeroRef.current;
-    const root = lessonMainScrollRef.current;
-    if (!hero || !root || !courseData) return;
-    if (currentLesson?.type === 'quiz' || currentLesson?.type === 'text') return;
-    const onWheel = (e) => {
-      const t = e.target;
-      if (t instanceof HTMLVideoElement) return;
-      if (t instanceof Element && t.closest('iframe')) return;
-      root.scrollTop += e.deltaY;
-      e.preventDefault();
-    };
-    hero.addEventListener('wheel', onWheel, { passive: false });
-    return () => hero.removeEventListener('wheel', onWheel);
-  }, [currentLesson?.id, currentLesson?.type, courseData]);
 
   const progressMutation = useMutation({
     mutationFn: (data) => enrollmentService.updateProgress(data),
@@ -154,24 +107,12 @@ export default function CourseWatch() {
     return { title: null, index: null, total };
   }, [currentLesson, courseData?.sections]);
 
-  const lessonVideoHeights = useMemo(() => {
-    const vh = viewportH;
-    const hMax = Math.min(vh * 0.72, vh - 132, 720);
-    const hMin = Math.min(vh * 0.30, 240);
-    return { hMax: Math.max(hMin + 80, hMax), hMin };
-  }, [viewportH]);
-
   if (courseLoading) return <PageLoader />;
   if (!courseData) return <div className="text-center py-20 text-red-500">Course not found</div>;
 
   const { course, sections } = courseData;
   const isQuizLesson = currentLesson?.type === 'quiz';
   const isTextLesson = currentLesson?.type === 'text';
-  const isVideoLesson = !isQuizLesson && !isTextLesson;
-  const heroCollapseP = isVideoLesson ? Math.min(1, lessonScrollY / LESSON_COLLAPSE_SCROLL_PX) : 0;
-  const hVideo =
-    lessonVideoHeights.hMax + (lessonVideoHeights.hMin - lessonVideoHeights.hMax) * heroCollapseP;
-  const titleTuck = Math.min(1, heroCollapseP / 0.38);
 
   const fullLesson = lessonData?.lesson || currentLesson;
   const videoUrl = fullLesson?.video_url || currentLesson?.video_url;
@@ -357,110 +298,78 @@ export default function CourseWatch() {
             <QuizPlayer lessonId={currentLesson.id} courseId={course.id} onComplete={() => markComplete(currentLesson.id)} />
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div
-              ref={lessonMainScrollRef}
-              onScroll={handleLessonScroll}
-              className="lesson-watch-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[#f4f6fb] [overflow-anchor:none]"
-            >
-              {!isTextLesson && (
-                <div
-                  ref={videoHeroRef}
-                  className="relative z-10 border-b border-white/[0.06] bg-gradient-to-b from-[#0a0f1c] via-[#070b14] to-[#060a12]"
-                >
-                  <div className="mx-auto max-w-5xl px-4 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
+          <div
+            ref={lessonContentScrollRef}
+            className="lesson-watch-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[#f4f6fb] [overflow-anchor:none]"
+          >
+            {!isTextLesson && (
+              <div className="relative z-10 border-b border-white/[0.06] bg-gradient-to-b from-[#0a0f1c] via-[#070b14] to-[#060a12]">
+                <div className="mx-auto max-w-5xl px-4 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
+                  <div className="mb-6">
+                    {currentSectionMeta.index != null && currentSectionMeta.total > 0 && (
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-300/90">
+                        Module {currentSectionMeta.index} of {currentSectionMeta.total}
+                      </p>
+                    )}
+                    {currentSectionMeta.title && (
+                      <p className="mb-2 text-sm font-medium text-slate-400">{currentSectionMeta.title}</p>
+                    )}
+                    <h1 className="text-balance text-xl font-bold tracking-tight text-white sm:text-3xl md:text-[2rem] md:leading-tight">
+                      {currentLesson?.title}
+                    </h1>
+                  </div>
+
+                  <div className="relative mx-auto max-w-[min(100%,1100px)]">
                     <div
-                      className="overflow-hidden transition-[max-height,opacity,margin,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                      style={{
-                        maxHeight: `${Math.max(0, (1 - titleTuck) * 240)}px`,
-                        opacity: 1 - titleTuck * 0.95,
-                        marginBottom: `${Math.max(0, (1 - titleTuck) * 1.5)}rem`,
-                        transform: `translateY(${-4 * titleTuck}px)`,
-                      }}
-                    >
-                      {currentSectionMeta.index != null && currentSectionMeta.total > 0 && (
-                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-300/90">
-                          Module {currentSectionMeta.index} of {currentSectionMeta.total}
-                        </p>
-                      )}
-                      {currentSectionMeta.title && (
-                        <p className="mb-2 text-sm font-medium text-slate-400">{currentSectionMeta.title}</p>
-                      )}
-                      <h1 className="text-balance text-xl font-bold tracking-tight text-white sm:text-3xl md:text-[2rem] md:leading-tight">
-                        {currentLesson?.title}
-                      </h1>
-                    </div>
-
-                    <div className="relative mx-auto max-w-[min(100%,1100px)]">
-                      {isVideoLesson && heroCollapseP > 0.03 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            lessonMainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-slate-950/85 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md transition hover:bg-slate-900 sm:text-xs"
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                          Expand video
-                        </button>
-                      )}
-                      <div
-                        className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary-500/25 via-transparent to-indigo-950/40 opacity-90 blur-md"
-                        aria-hidden
-                      />
-                      <div className="relative rounded-2xl p-1 sm:p-1.5">
-                        <div
-                          className="lesson-video-dynamic mx-auto"
-                          style={{
-                            maxHeight: `${Math.round(hVideo)}px`,
-                            width: '100%',
-                            maxWidth: `${Math.round((hVideo * 16) / 9)}px`,
-                          }}
-                        >
-                          {videoUrl ? (
-                            <LessonVideoPlayer url={videoUrl} lessonTitle={currentLesson?.title} />
-                          ) : (
-                            <div className="relative flex h-full min-h-[220px] w-full flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 text-center">
-                              {course.thumbnail && (
-                                <img
-                                  src={course.thumbnail}
-                                  alt=""
-                                  className="absolute inset-0 h-full w-full object-cover opacity-20 blur-md"
-                                />
-                              )}
-                              <div className="relative z-[1]">
-                                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
-                                  <Video className="h-8 w-8 text-slate-500" />
-                                </div>
-                                <p className="text-base font-semibold text-slate-200">No video for this lesson</p>
-                                <p className="mt-1 max-w-sm text-sm text-slate-500">This lesson may use text or resources only. Check the tabs below.</p>
+                      className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary-500/25 via-transparent to-indigo-950/40 opacity-90 blur-md"
+                      aria-hidden
+                    />
+                    <div className="relative rounded-2xl p-1 sm:p-1.5">
+                      <div className="lesson-video-dynamic lesson-video-hero mx-auto">
+                        {videoUrl ? (
+                          <LessonVideoPlayer url={videoUrl} lessonTitle={currentLesson?.title} />
+                        ) : (
+                          <div className="relative flex h-full min-h-[220px] w-full flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 text-center">
+                            {course.thumbnail && (
+                              <img
+                                src={course.thumbnail}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover opacity-20 blur-md"
+                              />
+                            )}
+                            <div className="relative z-[1]">
+                              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+                                <Video className="h-8 w-8 text-slate-500" />
                               </div>
+                              <p className="text-base font-semibold text-slate-200">No video for this lesson</p>
+                              <p className="mt-1 max-w-sm text-sm text-slate-500">This lesson may use text or resources only. Check the tabs below.</p>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {isTextLesson && (
-                <div className="border-b border-slate-200/90 bg-white px-4 py-6 sm:px-8">
-                  <div className="mx-auto max-w-5xl">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
-                        <FileText className="h-6 w-6 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Article</p>
-                        <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{currentLesson?.title}</h1>
-                      </div>
+            {isTextLesson && (
+              <div className="border-b border-slate-200/90 bg-white px-4 py-6 sm:px-8">
+                <div className="mx-auto max-w-5xl">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
+                      <FileText className="h-6 w-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Article</p>
+                      <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{currentLesson?.title}</h1>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              <div className="border-t border-slate-200/80 bg-[#f4f6fb]">
+            <div className="border-t border-slate-200/80 bg-[#f4f6fb]">
                 <div className="sticky top-0 z-20 border-b border-slate-200/60 bg-[#f4f6fb]/95 px-3 py-3 backdrop-blur-xl sm:px-6">
                   <div className="mx-auto flex max-w-4xl gap-1 overflow-x-auto rounded-2xl bg-slate-200/40 p-1 ring-1 ring-slate-200/50">
                     {[
@@ -487,7 +396,10 @@ export default function CourseWatch() {
                   </div>
                 </div>
 
-                <div className="mx-auto max-w-4xl px-4 py-8 pb-28 sm:px-6 sm:py-10 sm:pb-32">
+                <div
+                  key={`${fullLesson?.id ?? currentLesson?.id}-${activeTab}`}
+                  className="lesson-content-enter mx-auto max-w-4xl px-4 py-8 pb-28 sm:px-6 sm:py-10 sm:pb-32"
+                >
                   {activeTab === 'overview' && (
                     <div className="space-y-6">
                       <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-9">
@@ -649,7 +561,6 @@ export default function CourseWatch() {
                 </div>
               </div>
             </div>
-          </div>
         )}
       </div>
     </div>
