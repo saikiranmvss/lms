@@ -33,8 +33,8 @@ router.post('/video', authenticate, authorize('instructor', 'admin'), (req, res)
   upload.single('video')(req, res, (err) => {
     if (err) return sendError(res, 400, err.message || 'Upload failed');
     if (!req.file) return sendError(res, 400, 'No file uploaded');
-    const host = `${req.protocol}://${req.get('host')}`;
-    const url = `${host}/uploads/videos/${req.file.filename}`;
+    // Relative URL so the SPA always resolves against the browser origin (Vite proxy, Apache, CDN, etc.)
+    const url = `/uploads/videos/${req.file.filename}`;
     sendSuccess(res, { url, filename: req.file.filename, size: req.file.size }, 'Video uploaded');
   });
 });

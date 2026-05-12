@@ -27,7 +27,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginEmbedderPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  // Allow enrolled students to play /uploads videos from the SPA origin (dev/prod)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 // Reflect request Origin so dev works for both http://localhost:5000 and http://127.0.0.1:5000
 // and when the SPA calls the API at http://127.0.0.1:3001 (VITE_API_ORIGIN).
 app.use(cors({

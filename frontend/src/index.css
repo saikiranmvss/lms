@@ -66,19 +66,83 @@
 .page-enter { opacity: 0; transform: translateY(8px); }
 .page-enter-active { opacity: 1; transform: translateY(0); transition: all 300ms ease; }
 
-/* Course watch: video stays fixed above; max size leaves room for the scrollable tab pane below */
+/* Course watch: responsive 16:9 player; children fill the frame */
 .course-video-frame {
   position: relative;
   margin-inline: auto;
-  max-height: min(72vh, calc(100dvh - 8rem));
-  width: min(100%, calc(min(72vh, calc(100dvh - 8rem)) * 16 / 9));
+  max-height: min(68vh, calc(100dvh - 13rem));
+  width: min(100%, calc(min(68vh, calc(100dvh - 13rem)) * 16 / 9));
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: #030712;
   overflow: hidden;
+  border-radius: 0.75rem;
 }
 .course-video-frame > * {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.course-video-frame video {
+  object-fit: contain;
+}
+/* Premium lesson player shell (sizes set inline in CourseWatch) */
+.lesson-video-dynamic {
+  position: relative;
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  background: radial-gradient(ellipse 120% 80% at 50% 20%, #1e293b 0%, #020617 55%, #000 100%);
+  overflow: hidden;
+  border-radius: 1rem;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 24px 48px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    max-height 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+    width 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.35s ease;
+}
+.lesson-video-dynamic > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.lesson-video-dynamic video {
+  object-fit: contain;
+}
+.lesson-player-focus {
+  z-index: 3;
+  pointer-events: auto;
+}
+.lesson-react-player {
+  border-radius: inherit;
+  overflow: hidden;
+}
+.lesson-react-player > * {
+  border-radius: inherit !important;
+}
+.lesson-native-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.lesson-watch-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.lesson-watch-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.lesson-watch-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+.lesson-watch-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
 }

@@ -1,22 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ChevronLeft, CheckCircle, Circle, ChevronDown, ChevronRight,
-  MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle, Video
+  ChevronLeft, ChevronUp, CheckCircle, Circle, ChevronDown, ChevronRight,
+  MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle, Video, BookOpen, Loader2,
 } from 'lucide-react';
-import ReactPlayer from 'react-player';
 import { courseService, enrollmentService, discussionService, noteService } from '../../services/courseService.js';
 import { formatDuration, formatDate, getInitials, timeAgo } from '../../utils/helpers.js';
 import { PageLoader } from '../../components/common/LoadingSpinner.jsx';
 import QuizPlayer from '../../components/quiz/QuizPlayer.jsx';
-import useAuthStore from '../../store/authStore.js';
+import LessonVideoPlayer from '../../components/student/LessonVideoPlayer.jsx';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
+/** Pixels of scroll in the lesson column to fully tuck the hero video (0→1 progress). */
+const LESSON_COLLAPSE_SCROLL_PX = 280;
+
 export default function CourseWatch() {
   const { slug } = useParams();
-  const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [currentLesson, setCurrentLesson] = useState(null);
   const [openSections, setOpenSections] = useState([0]);
@@ -24,7 +25,13 @@ export default function CourseWatch() {
   const [noteContent, setNoteContent] = useState('');
   const [questionContent, setQuestionContent] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const belowLessonScrollRef = useRef(null);
+  const [lessonScrollY, setLessonScrollY] = useState(0);
+  const [viewportH, setViewportH] = useState(
+    typeof window !== 'undefined' ? window.innerHeight : 800
+  );
+  const lessonMainScrollRef = useRef(null);
+  const videoHeroRef = useRef(null);
+  const lessonScrollRafRef = useRef(0);
 
   const { data: courseData, isLoading: courseLoading } = useQuery({
     queryKey: ['course-watch', slug],
@@ -37,8 +44,7 @@ export default function CourseWatch() {
     enabled: !!courseData?.course?.id,
   });
 
-  // Detailed lesson data (video_url, content, resources, discussions)
-  const { data: lessonData } = useQuery({
+  const { data: lessonData, isPending: lessonDetailPending } = useQuery({
     queryKey: ['lesson-detail', currentLesson?.id],
     queryFn: () => courseService.getLesson(currentLesson.id).then(r => r.data.data),
     enabled: !!currentLesson?.id,
@@ -50,7 +56,6 @@ export default function CourseWatch() {
     enabled: !!courseData?.course?.id && activeTab === 'notes',
   });
 
-  // Set first lesson on load
   useEffect(() => {
     if (courseData?.sections?.length > 0 && !currentLesson) {
       const first = courseData.sections[0]?.lessons?.[0];
@@ -58,15 +63,51 @@ export default function CourseWatch() {
     }
   }, [courseData]);
 
-  // Reset tab when switching between non-quiz lessons
   useEffect(() => {
     if (currentLesson?.type !== 'quiz') setActiveTab('overview');
   }, [currentLesson?.id]);
 
-  // Single scroll region under the video: jump to top when lesson or tab changes
   useEffect(() => {
-    belowLessonScrollRef.current?.scrollTo(0, 0);
+    const ro = () => setViewportH(window.innerHeight);
+    ro();
+    window.addEventListener('resize', ro);
+    return () => window.removeEventListener('resize', ro);
+  }, []);
+
+  useEffect(() => {
+    lessonMainScrollRef.current?.scrollTo(0, 0);
+    setLessonScrollY(0);
   }, [currentLesson?.id, activeTab]);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(lessonScrollRafRef.current);
+  }, []);
+
+  const handleLessonScroll = useCallback(() => {
+    const el = lessonMainScrollRef.current;
+    if (!el) return;
+    cancelAnimationFrame(lessonScrollRafRef.current);
+    lessonScrollRafRef.current = requestAnimationFrame(() => {
+      setLessonScrollY(el.scrollTop);
+    });
+  }, []);
+
+  /** Forward wheel from the video hero (incl. iframe dead zones) into the unified lesson scroller. */
+  useEffect(() => {
+    const hero = videoHeroRef.current;
+    const root = lessonMainScrollRef.current;
+    if (!hero || !root || !courseData) return;
+    if (currentLesson?.type === 'quiz' || currentLesson?.type === 'text') return;
+    const onWheel = (e) => {
+      const t = e.target;
+      if (t instanceof HTMLVideoElement) return;
+      if (t instanceof Element && t.closest('iframe')) return;
+      root.scrollTop += e.deltaY;
+      e.preventDefault();
+    };
+    hero.addEventListener('wheel', onWheel, { passive: false });
+    return () => hero.removeEventListener('wheel', onWheel);
+  }, [currentLesson?.id, currentLesson?.type, courseData]);
 
   const progressMutation = useMutation({
     mutationFn: (data) => enrollmentService.updateProgress(data),
@@ -101,301 +142,511 @@ export default function CourseWatch() {
   const completedIds = new Set((progressData?.progress || []).filter(p => p.is_completed).map(p => p.lesson_id));
   const isCompleted = (id) => completedIds.has(id);
 
+  const currentSectionMeta = useMemo(() => {
+    if (!currentLesson || !courseData?.sections) return { title: null, index: null, total: courseData?.sections?.length ?? 0 };
+    const total = courseData.sections.length;
+    for (let i = 0; i < courseData.sections.length; i++) {
+      const s = courseData.sections[i];
+      if ((s.lessons || []).some(l => l.id === currentLesson.id)) {
+        return { title: s.title, index: i + 1, total };
+      }
+    }
+    return { title: null, index: null, total };
+  }, [currentLesson, courseData?.sections]);
+
+  const lessonVideoHeights = useMemo(() => {
+    const vh = viewportH;
+    const hMax = Math.min(vh * 0.72, vh - 132, 720);
+    const hMin = Math.min(vh * 0.30, 240);
+    return { hMax: Math.max(hMin + 80, hMax), hMin };
+  }, [viewportH]);
+
   if (courseLoading) return <PageLoader />;
   if (!courseData) return <div className="text-center py-20 text-red-500">Course not found</div>;
 
   const { course, sections } = courseData;
   const isQuizLesson = currentLesson?.type === 'quiz';
   const isTextLesson = currentLesson?.type === 'text';
+  const isVideoLesson = !isQuizLesson && !isTextLesson;
+  const heroCollapseP = isVideoLesson ? Math.min(1, lessonScrollY / LESSON_COLLAPSE_SCROLL_PX) : 0;
+  const hVideo =
+    lessonVideoHeights.hMax + (lessonVideoHeights.hMin - lessonVideoHeights.hMax) * heroCollapseP;
+  const titleTuck = Math.min(1, heroCollapseP / 0.38);
 
-  // Use the full lesson detail for content (video_url, content, etc.)
   const fullLesson = lessonData?.lesson || currentLesson;
   const videoUrl = fullLesson?.video_url || currentLesson?.video_url;
   const lessonContent = fullLesson?.content || currentLesson?.content;
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden">
-      {/* ── Sidebar ── */}
-      <div className={clsx(
-        'flex-shrink-0 bg-slate-900 border-r border-slate-800 flex min-h-0 flex-col transition-all duration-300',
-        sidebarOpen ? 'w-80' : 'w-0 overflow-hidden'
-      )}>
-        <div className="p-4 border-b border-slate-800">
-          <Link to={`/courses/${slug}`} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-3 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to course
-          </Link>
-          <h2 className="font-semibold text-white text-sm line-clamp-2">{course.title}</h2>
-          {progressData?.enrollment && (
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-slate-400 mb-1">
-                <span>Progress</span>
-                <span>{progressData.enrollment.completion_percentage}%</span>
-              </div>
-              <div className="bg-slate-700 rounded-full h-1.5">
-                <div className="bg-primary-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${progressData.enrollment.completion_percentage}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
+    <div className="relative flex h-[100dvh] overflow-hidden bg-[#060a12] text-slate-100">
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close course outline"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm transition-opacity lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-        <div className="flex-1 overflow-y-auto">
-          {sections.map((section, si) => (
-            <div key={section.id}>
-              <button
-                onClick={() => setOpenSections(prev => prev.includes(si) ? prev.filter(x => x !== si) : [...prev, si])}
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-800 transition-colors"
-              >
-                <span className="text-sm font-semibold text-slate-200 pr-2">{section.title}</span>
-                {openSections.includes(si)
-                  ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
-              </button>
-              {openSections.includes(si) && (
-                <div>
-                  {(section.lessons || []).map((lesson) => (
-                    <button key={lesson.id} onClick={() => setCurrentLesson(lesson)}
-                      className={clsx(
-                        'w-full flex items-start gap-3 px-4 py-3 text-left border-l-2 transition-all hover:bg-slate-800',
-                        currentLesson?.id === lesson.id ? 'border-primary-500 bg-slate-800' : 'border-transparent'
-                      )}>
-                      {isCompleted(lesson.id)
-                        ? <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                        : lesson.type === 'quiz'
-                          ? <HelpCircle className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                          : lesson.type === 'text'
-                            ? <FileText className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                            : <Circle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />}
-                      <div className="min-w-0">
-                        <p className={clsx('text-xs leading-snug', currentLesson?.id === lesson.id ? 'text-white font-medium' : 'text-slate-400')}>
-                          {lesson.title}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5 capitalize">
-                          {lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'text' ? 'Article' : formatDuration(lesson.duration_seconds)}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+      <aside
+        className={clsx(
+          'flex min-h-0 flex-shrink-0 flex-col border-r border-white/[0.06] bg-[#080d18]',
+          'fixed inset-y-0 left-0 z-50 w-[min(92vw,20rem)] shadow-[20px_0_50px_-15px_rgba(0,0,0,0.55)] transition-transform duration-300 ease-out',
+          'lg:relative lg:z-0 lg:translate-x-0 lg:shadow-none lg:transition-[width] lg:duration-300',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+          sidebarOpen ? 'lg:w-80' : 'lg:w-0 lg:overflow-hidden lg:border-r-0',
+        )}
+      >
+        <div className="flex-shrink-0 border-b border-white/[0.06] bg-gradient-to-b from-[#0c1220] to-[#080d18] p-4">
+          <Link
+            to={`/courses/${slug}`}
+            className="mb-4 inline-flex items-center gap-2 rounded-lg px-2 py-1 text-xs font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Course overview
+          </Link>
+          <div className="flex items-start gap-3">
+            <div className="relative h-16 w-[5.5rem] flex-shrink-0 overflow-hidden rounded-xl bg-slate-800/80 ring-1 ring-white/10 shadow-lg">
+              {course.thumbnail ? (
+                <img src={course.thumbnail} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-slate-800">
+                  <BookOpen className="h-7 w-7 text-slate-600" />
                 </div>
               )}
             </div>
-          ))}
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Learning</p>
+              <h2 className="mt-0.5 line-clamp-2 text-sm font-semibold leading-snug text-white">{course.title}</h2>
+              {progressData?.enrollment && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span>Your progress</span>
+                    <span className="tabular-nums text-slate-300">{progressData.enrollment.completion_percentage}%</span>
+                  </div>
+                  <div className="h-1 overflow-hidden rounded-full bg-slate-800/90">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-primary-500 via-primary-400 to-indigo-400 transition-all duration-500"
+                      style={{ width: `${progressData.enrollment.completion_percentage}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* ── Main Area: video/header fixed; only the pane below scrolls (tabs + body) */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-400 hover:text-white transition-colors">
-            <ChevronLeft className={clsx('w-5 h-5 transition-transform', !sidebarOpen && 'rotate-180')} />
+        <nav className="lesson-watch-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4">
+          {sections.map((section, si) => (
+            <div key={section.id} className="mb-4 last:mb-2">
+              <button
+                type="button"
+                onClick={() => setOpenSections(prev => (prev.includes(si) ? prev.filter(x => x !== si) : [...prev, si]))}
+                className="flex w-full items-center justify-between gap-2 rounded-xl bg-white/[0.03] px-3 py-2.5 text-left ring-1 ring-white/[0.05] transition-colors hover:bg-white/[0.06]"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">Module {si + 1}</span>
+                  <span className="mt-0.5 block truncate text-sm font-semibold text-slate-200">{section.title}</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500">{(section.lessons || []).length} lessons</span>
+                </span>
+                {openSections.includes(si) ? (
+                  <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-500" />
+                )}
+              </button>
+              {openSections.includes(si) && (
+                <ul className="mt-2 space-y-1 border-l border-white/[0.08] pl-3 ml-2.5">
+                  {(section.lessons || []).map((lesson) => {
+                    const active = currentLesson?.id === lesson.id;
+                    return (
+                      <li key={lesson.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentLesson(lesson);
+                            if (typeof window !== 'undefined' && window.innerWidth < 1024) setSidebarOpen(false);
+                          }}
+                          className={clsx(
+                            'group flex w-full items-start gap-2.5 rounded-xl py-2.5 pl-2.5 pr-2 text-left transition-all duration-200',
+                            active
+                              ? 'bg-gradient-to-r from-primary-600/25 to-indigo-600/10 text-white shadow-[inset_3px_0_0_0] shadow-primary-400 ring-1 ring-primary-500/30'
+                              : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-100',
+                          )}
+                        >
+                          {isCompleted(lesson.id) ? (
+                            <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                          ) : lesson.type === 'quiz' ? (
+                            <HelpCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-400" />
+                          ) : lesson.type === 'text' ? (
+                            <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-400" />
+                          ) : (
+                            <Circle
+                              className={clsx(
+                                'mt-0.5 h-4 w-4 flex-shrink-0 transition-colors',
+                                active ? 'text-primary-300' : 'text-slate-600 group-hover:text-slate-500',
+                              )}
+                            />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className={clsx('block text-[13px] leading-snug', active ? 'font-semibold text-white' : 'font-medium')}>
+                              {lesson.title}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-slate-500">
+                              {lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'text' ? 'Article' : formatDuration(lesson.duration_seconds)}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Main */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f4f6fb]">
+        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-md sm:px-5">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+            aria-label={sidebarOpen ? 'Hide curriculum' : 'Show curriculum'}
+          >
+            <ChevronLeft className={clsx('h-5 w-5 transition-transform duration-300', !sidebarOpen && 'rotate-180')} />
           </button>
-          <span className="text-white font-medium text-sm truncate mx-4">{currentLesson?.title}</span>
-          {!isQuizLesson && (
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Current lesson</p>
+            <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">{currentLesson?.title}</p>
+          </div>
+          {!isQuizLesson ? (
             <button
+              type="button"
               onClick={() => currentLesson && markComplete(currentLesson.id)}
               disabled={isCompleted(currentLesson?.id) || progressMutation.isPending}
               className={clsx(
-                'flex items-center gap-2 text-sm font-medium px-4 py-1.5 rounded-lg transition-all',
+                'flex flex-shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all sm:text-sm',
                 isCompleted(currentLesson?.id)
-                  ? 'bg-green-600/20 text-green-400 cursor-default'
-                  : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-95'
-              )}>
-              <CheckCircle className="w-4 h-4" />
-              {isCompleted(currentLesson?.id) ? 'Completed' : 'Mark Complete'}
+                  ? 'cursor-default border-emerald-200/80 bg-emerald-50 text-emerald-800'
+                  : 'border-primary-500/30 bg-primary-600 text-white shadow-md shadow-primary-900/15 hover:bg-primary-500 active:scale-[0.98]',
+              )}
+            >
+              <CheckCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">{isCompleted(currentLesson?.id) ? 'Completed' : 'Mark complete'}</span>
+              <span className="sm:hidden">{isCompleted(currentLesson?.id) ? 'Done' : 'Complete'}</span>
             </button>
-          )}
-          {isQuizLesson && (
-            <div className={clsx('flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg',
-              isCompleted(currentLesson?.id) ? 'bg-green-600/20 text-green-400' : 'bg-purple-600/20 text-purple-300')}>
-              <HelpCircle className="w-4 h-4" />
-              {isCompleted(currentLesson?.id) ? 'Passed' : 'Quiz'}
+          ) : (
+            <div
+              className={clsx(
+                'flex flex-shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold sm:text-sm',
+                isCompleted(currentLesson?.id)
+                  ? 'border-emerald-200/80 bg-emerald-50 text-emerald-800'
+                  : 'border-violet-200/80 bg-violet-50 text-violet-900',
+              )}
+            >
+              <HelpCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">{isCompleted(currentLesson?.id) ? 'Passed' : 'Quiz'}</span>
             </div>
           )}
-        </div>
+        </header>
 
-        {/* ── Quiz lesson ── */}
         {isQuizLesson ? (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
-            <QuizPlayer
-              lessonId={currentLesson.id}
-              courseId={course.id}
-              onComplete={() => markComplete(currentLesson.id)}
-            />
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[#f4f6fb]">
+            <QuizPlayer lessonId={currentLesson.id} courseId={course.id} onComplete={() => markComplete(currentLesson.id)} />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* ── Video area (only for video lessons) — fixed above scroll; does not move when scrolling below ── */}
-            {!isTextLesson && (
-              <div className="flex w-full flex-shrink-0 justify-center bg-black">
-                <div className="course-video-frame">
-                  {videoUrl ? (
-                    <ReactPlayer
-                      key={videoUrl}
-                      url={videoUrl}
-                      width="100%"
-                      height="100%"
-                      controls
-                      playing={false}
-                      config={{
-                        youtube: { playerVars: { modestbranding: 1, rel: 0 } },
-                        file: { attributes: { controlsList: 'nodownload' } },
+            <div
+              ref={lessonMainScrollRef}
+              onScroll={handleLessonScroll}
+              className="lesson-watch-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[#f4f6fb] [overflow-anchor:none]"
+            >
+              {!isTextLesson && (
+                <div
+                  ref={videoHeroRef}
+                  className="relative z-10 border-b border-white/[0.06] bg-gradient-to-b from-[#0a0f1c] via-[#070b14] to-[#060a12]"
+                >
+                  <div className="mx-auto max-w-5xl px-4 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
+                    <div
+                      className="overflow-hidden transition-[max-height,opacity,margin,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                      style={{
+                        maxHeight: `${Math.max(0, (1 - titleTuck) * 240)}px`,
+                        opacity: 1 - titleTuck * 0.95,
+                        marginBottom: `${Math.max(0, (1 - titleTuck) * 1.5)}rem`,
+                        transform: `translateY(${-4 * titleTuck}px)`,
                       }}
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-900">
-                      <div className="text-center text-slate-500">
-                        <Video className="mx-auto mb-3 h-16 w-16 opacity-30" />
-                        <p className="text-sm">No video attached to this lesson</p>
+                    >
+                      {currentSectionMeta.index != null && currentSectionMeta.total > 0 && (
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-300/90">
+                          Module {currentSectionMeta.index} of {currentSectionMeta.total}
+                        </p>
+                      )}
+                      {currentSectionMeta.title && (
+                        <p className="mb-2 text-sm font-medium text-slate-400">{currentSectionMeta.title}</p>
+                      )}
+                      <h1 className="text-balance text-xl font-bold tracking-tight text-white sm:text-3xl md:text-[2rem] md:leading-tight">
+                        {currentLesson?.title}
+                      </h1>
+                    </div>
+
+                    <div className="relative mx-auto max-w-[min(100%,1100px)]">
+                      {isVideoLesson && heroCollapseP > 0.03 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            lessonMainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-slate-950/85 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md transition hover:bg-slate-900 sm:text-xs"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                          Expand video
+                        </button>
+                      )}
+                      <div
+                        className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary-500/25 via-transparent to-indigo-950/40 opacity-90 blur-md"
+                        aria-hidden
+                      />
+                      <div className="relative rounded-2xl p-1 sm:p-1.5">
+                        <div
+                          className="lesson-video-dynamic mx-auto"
+                          style={{
+                            maxHeight: `${Math.round(hVideo)}px`,
+                            width: '100%',
+                            maxWidth: `${Math.round((hVideo * 16) / 9)}px`,
+                          }}
+                        >
+                          {videoUrl ? (
+                            <LessonVideoPlayer url={videoUrl} lessonTitle={currentLesson?.title} />
+                          ) : (
+                            <div className="relative flex h-full min-h-[220px] w-full flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 text-center">
+                              {course.thumbnail && (
+                                <img
+                                  src={course.thumbnail}
+                                  alt=""
+                                  className="absolute inset-0 h-full w-full object-cover opacity-20 blur-md"
+                                />
+                              )}
+                              <div className="relative z-[1]">
+                                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+                                  <Video className="h-8 w-8 text-slate-500" />
+                                </div>
+                                <p className="text-base font-semibold text-slate-200">No video for this lesson</p>
+                                <p className="mt-1 max-w-sm text-sm text-slate-500">This lesson may use text or resources only. Check the tabs below.</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isTextLesson && (
+                <div className="border-b border-slate-200/90 bg-white px-4 py-6 sm:px-8">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
+                        <FileText className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Article</p>
+                        <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{currentLesson?.title}</h1>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-slate-200/80 bg-[#f4f6fb]">
+                <div className="sticky top-0 z-20 border-b border-slate-200/60 bg-[#f4f6fb]/95 px-3 py-3 backdrop-blur-xl sm:px-6">
+                  <div className="mx-auto flex max-w-4xl gap-1 overflow-x-auto rounded-2xl bg-slate-200/40 p-1 ring-1 ring-slate-200/50">
+                    {[
+                      ['overview', isTextLesson ? 'Article' : 'Overview', isTextLesson ? FileText : FileText],
+                      ['notes', 'Notes', StickyNote],
+                      ['discussions', 'Q&A', MessageSquare],
+                      ['resources', 'Resources', Download],
+                    ].map(([id, label, Icon]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setActiveTab(id)}
+                        className={clsx(
+                          'flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all sm:flex-initial sm:px-4',
+                          activeTab === id
+                            ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                            : 'text-slate-600 hover:bg-white/60 hover:text-slate-900',
+                        )}
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0 opacity-80" />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mx-auto max-w-4xl px-4 py-8 pb-28 sm:px-6 sm:py-10 sm:pb-32">
+                  {activeTab === 'overview' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-9">
+                        <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{currentLesson?.title}</h2>
+                        {currentLesson?.description && (
+                          <p className="mt-3 text-base leading-relaxed text-slate-600">{currentLesson.description}</p>
+                        )}
+                        {lessonDetailPending && !lessonContent && (
+                          <div className="mt-8 space-y-3" aria-hidden>
+                            <div className="skeleton h-4 w-full rounded-md" />
+                            <div className="skeleton h-4 w-[92%] rounded-md" />
+                            <div className="skeleton h-4 w-[88%] rounded-md" />
+                            <div className="skeleton mt-6 h-28 w-full rounded-xl" />
+                          </div>
+                        )}
+                        {lessonContent ? (
+                          <div
+                            className="prose prose-slate mt-6 max-w-none prose-headings:font-semibold prose-a:text-primary-600 prose-img:rounded-xl prose-pre:bg-slate-900 prose-pre:text-slate-100"
+                            dangerouslySetInnerHTML={{ __html: lessonContent }}
+                          />
+                        ) : (
+                          !lessonDetailPending && (
+                            <p className="mt-6 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+                              No written content for this lesson.
+                            </p>
+                          )
+                        )}
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
 
-            {/* ── Text/Article header ── */}
-            {isTextLesson && (
-              <div className="flex-shrink-0 border-b border-slate-700 bg-slate-800 px-6 py-4">
-                <div className="flex items-center gap-3 text-slate-300">
-                  <FileText className="h-5 w-5 text-green-400" />
-                  <span className="text-sm font-medium">Article</span>
-                </div>
-              </div>
-            )}
-
-            {/* ── Tabs + tab body: one scroll area so you can scroll up to the strip and down through content ── */}
-            <div
-              ref={belowLessonScrollRef}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-white"
-            >
-              <div className="sticky top-0 z-10 flex overflow-x-auto border-b border-slate-200 bg-white/95 px-6 py-0 shadow-sm backdrop-blur-sm supports-[backdrop-filter]:bg-white/80">
-                {[
-                  ['overview', isTextLesson ? 'Article' : 'Overview', isTextLesson ? FileText : FileText],
-                  ['notes', 'Notes', StickyNote],
-                  ['discussions', 'Q&A', MessageSquare],
-                  ['resources', 'Resources', Download],
-                ].map(([id, label, Icon]) => (
-                  <button key={id} onClick={() => setActiveTab(id)}
-                    className={clsx(
-                      'flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap',
-                      activeTab === id ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'
-                    )}>
-                    <Icon className="w-4 h-4" />{label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-6">
-                {/* Overview / Article tab */}
-                {activeTab === 'overview' && (
-                  <div className="max-w-3xl">
-                    <h2 className="text-xl font-bold text-slate-900 mb-4">{currentLesson?.title}</h2>
-                    {currentLesson?.description && (
-                      <p className="text-slate-600 leading-relaxed mb-6">{currentLesson.description}</p>
-                    )}
-                    {lessonContent ? (
-                      <div
-                        className="prose prose-slate max-w-none text-slate-700 leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: lessonContent }}
-                      />
-                    ) : (
-                      !lessonData && (
-                        <p className="text-slate-400 text-sm italic">Loading content...</p>
-                      )
-                    )}
-                  </div>
-                )}
-
-                {/* Notes tab */}
-                {activeTab === 'notes' && (
-                  <div className="max-w-3xl space-y-5">
-                    <div className="card p-4">
-                      <textarea
-                        value={noteContent}
-                        onChange={e => setNoteContent(e.target.value)}
-                        placeholder="Write a note for this lesson..."
-                        rows={3}
-                        className="input resize-none"
-                      />
-                      <button
-                        onClick={() => noteMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: noteContent })}
-                        disabled={!noteContent.trim() || noteMutation.isPending}
-                        className="btn-primary mt-3 text-sm"
-                      >
-                        Save Note
-                      </button>
-                    </div>
-                    {(notes || []).length === 0 && (
-                      <p className="text-slate-400 text-sm text-center py-6">No notes yet for this course.</p>
-                    )}
-                    {(notes || []).map((note) => (
-                      <div key={note.id} className="card p-4">
-                        <p className="text-sm text-slate-700">{note.content}</p>
-                        <p className="text-xs text-slate-500 mt-2">{note.lesson_title} • {formatDate(note.created_at)}</p>
+                  {activeTab === 'notes' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm sm:p-7">
+                        <textarea
+                          value={noteContent}
+                          onChange={e => setNoteContent(e.target.value)}
+                          placeholder="Capture ideas while you watch…"
+                          rows={4}
+                          className="input min-h-[120px] resize-y border-slate-200 bg-slate-50/80 focus:bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => noteMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: noteContent })}
+                          disabled={!noteContent.trim() || noteMutation.isPending}
+                          className="btn-primary mt-4 text-sm"
+                        >
+                          Save note
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Q&A tab */}
-                {activeTab === 'discussions' && (
-                  <div className="max-w-3xl space-y-5">
-                    <div className="card p-4">
-                      <textarea
-                        value={questionContent}
-                        onChange={e => setQuestionContent(e.target.value)}
-                        placeholder="Ask a question about this lesson..."
-                        rows={3}
-                        className="input resize-none"
-                      />
-                      <button
-                        onClick={() => questionMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: questionContent })}
-                        disabled={!questionContent.trim() || questionMutation.isPending}
-                        className="btn-primary mt-3 text-sm"
-                      >
-                        Post Question
-                      </button>
-                    </div>
-                    {(lessonData?.discussions || []).length === 0 && (
-                      <p className="text-slate-400 text-sm text-center py-6">No questions yet. Be the first to ask!</p>
-                    )}
-                    {(lessonData?.discussions || []).map((d) => (
-                      <div key={d.id} className="card p-4">
-                        <div className="flex gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-semibold flex-shrink-0">
-                            {getInitials(d.name)}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-slate-900">{d.name}</span>
-                              <span className="text-xs text-slate-500">{timeAgo(d.created_at)}</span>
-                            </div>
-                            <p className="text-sm text-slate-700 mt-1">{d.content}</p>
-                          </div>
+                      {(notes || []).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/80 py-14 text-center">
+                          <StickyNote className="mb-3 h-11 w-11 text-slate-300" />
+                          <p className="text-sm font-semibold text-slate-700">No notes yet</p>
+                          <p className="mt-1 max-w-xs text-xs text-slate-500">Notes you add for this course appear here.</p>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ) : (
+                        (notes || []).map((note) => (
+                          <div
+                            key={note.id}
+                            className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+                          >
+                            <p className="text-sm leading-relaxed text-slate-700">{note.content}</p>
+                            <p className="mt-3 text-xs font-medium text-slate-400">
+                              {note.lesson_title} · {formatDate(note.created_at)}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
 
-                {/* Resources tab */}
-                {activeTab === 'resources' && (
-                  <div className="max-w-3xl space-y-3">
-                    {(lessonData?.resources || []).length === 0 ? (
-                      <p className="text-slate-400 text-sm text-center py-6">No downloadable resources for this lesson.</p>
-                    ) : (
-                      lessonData.resources.map((res) => (
-                        <a key={res.id} href={res.url} target="_blank" rel="noopener noreferrer"
-                          className="card p-4 flex items-center gap-3 hover:shadow-card-hover transition-all">
-                          <Download className="w-5 h-5 text-primary-600" />
-                          <span className="text-sm font-medium text-slate-900">{res.title}</span>
-                          <span className="ml-auto text-xs text-slate-500">{res.type}</span>
-                        </a>
-                      ))
-                    )}
-                  </div>
-                )}
+                  {activeTab === 'discussions' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm sm:p-7">
+                        <textarea
+                          value={questionContent}
+                          onChange={e => setQuestionContent(e.target.value)}
+                          placeholder="Ask the instructor or peers a question…"
+                          rows={4}
+                          className="input min-h-[120px] resize-y border-slate-200 bg-slate-50/80 focus:bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => questionMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: questionContent })}
+                          disabled={!questionContent.trim() || questionMutation.isPending}
+                          className="btn-primary mt-4 text-sm"
+                        >
+                          Post question
+                        </button>
+                      </div>
+                      {lessonDetailPending && !lessonData ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200/70 bg-white py-16">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+                          <p className="mt-3 text-sm text-slate-500">Loading discussion…</p>
+                        </div>
+                      ) : (lessonData?.discussions || []).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/80 py-14 text-center">
+                          <MessageSquare className="mb-3 h-11 w-11 text-slate-300" />
+                          <p className="text-sm font-semibold text-slate-700">No questions yet</p>
+                          <p className="mt-1 max-w-xs text-xs text-slate-500">Start the conversation for this lesson.</p>
+                        </div>
+                      ) : (
+                        (lessonData?.discussions || []).map((d) => (
+                          <div
+                            key={d.id}
+                            className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+                          >
+                            <div className="flex gap-4">
+                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-800">
+                                {getInitials(d.name)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-baseline gap-2">
+                                  <span className="font-semibold text-slate-900">{d.name}</span>
+                                  <span className="text-xs text-slate-400">{timeAgo(d.created_at)}</span>
+                                </div>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-700">{d.content}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'resources' && (
+                    <div className="space-y-3">
+                      {lessonDetailPending && !lessonData ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200/70 bg-white py-16">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+                          <p className="mt-3 text-sm text-slate-500">Loading resources…</p>
+                        </div>
+                      ) : (lessonData?.resources || []).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/80 py-14 text-center">
+                          <Download className="mb-3 h-11 w-11 text-slate-300" />
+                          <p className="text-sm font-semibold text-slate-700">No resources</p>
+                          <p className="mt-1 max-w-xs text-xs text-slate-500">This lesson has no downloadable files.</p>
+                        </div>
+                      ) : (
+                        (lessonData?.resources || []).map((res) => (
+                          <a
+                            key={res.id}
+                            href={res.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm transition-all hover:border-primary-200 hover:shadow-md"
+                          >
+                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600">
+                              <Download className="h-5 w-5" />
+                            </div>
+                            <span className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{res.title}</span>
+                            <span className="flex-shrink-0 text-xs font-medium uppercase text-slate-400">{res.type}</span>
+                          </a>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
