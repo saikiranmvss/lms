@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,6 +24,7 @@ export default function CourseWatch() {
   const [noteContent, setNoteContent] = useState('');
   const [questionContent, setQuestionContent] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const belowLessonScrollRef = useRef(null);
 
   const { data: courseData, isLoading: courseLoading } = useQuery({
     queryKey: ['course-watch', slug],
@@ -61,6 +62,11 @@ export default function CourseWatch() {
   useEffect(() => {
     if (currentLesson?.type !== 'quiz') setActiveTab('overview');
   }, [currentLesson?.id]);
+
+  // Single scroll region under the video: jump to top when lesson or tab changes
+  useEffect(() => {
+    belowLessonScrollRef.current?.scrollTo(0, 0);
+  }, [currentLesson?.id, activeTab]);
 
   const progressMutation = useMutation({
     mutationFn: (data) => enrollmentService.updateProgress(data),
@@ -111,7 +117,7 @@ export default function CourseWatch() {
     <div className="flex h-screen bg-slate-950 overflow-hidden">
       {/* ── Sidebar ── */}
       <div className={clsx(
-        'flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-300',
+        'flex-shrink-0 bg-slate-900 border-r border-slate-800 flex min-h-0 flex-col transition-all duration-300',
         sidebarOpen ? 'w-80' : 'w-0 overflow-hidden'
       )}>
         <div className="p-4 border-b border-slate-800">
@@ -177,8 +183,8 @@ export default function CourseWatch() {
         </div>
       </div>
 
-      {/* ── Main Area ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* ── Main Area: video/header fixed; only the pane below scrolls (tabs + body) */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 flex-shrink-0">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-400 hover:text-white transition-colors">
@@ -210,7 +216,7 @@ export default function CourseWatch() {
 
         {/* ── Quiz lesson ── */}
         {isQuizLesson ? (
-          <div className="flex-1 overflow-y-auto bg-slate-50">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
             <QuizPlayer
               lessonId={currentLesson.id}
               courseId={course.id}
@@ -218,11 +224,11 @@ export default function CourseWatch() {
             />
           </div>
         ) : (
-          <>
-            {/* ── Video area (only for video lessons) ── */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* ── Video area (only for video lessons) — fixed above scroll; does not move when scrolling below ── */}
             {!isTextLesson && (
-              <div className="bg-black flex-shrink-0">
-                <div className="video-wrapper">
+              <div className="flex w-full flex-shrink-0 justify-center bg-black">
+                <div className="course-video-frame">
                   {videoUrl ? (
                     <ReactPlayer
                       key={videoUrl}
@@ -237,9 +243,9 @@ export default function CourseWatch() {
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-900">
+                    <div className="flex h-full w-full items-center justify-center bg-slate-900">
                       <div className="text-center text-slate-500">
-                        <Video className="w-16 h-16 mx-auto mb-3 opacity-30" />
+                        <Video className="mx-auto mb-3 h-16 w-16 opacity-30" />
                         <p className="text-sm">No video attached to this lesson</p>
                       </div>
                     </div>
@@ -250,17 +256,20 @@ export default function CourseWatch() {
 
             {/* ── Text/Article header ── */}
             {isTextLesson && (
-              <div className="bg-slate-800 px-6 py-4 flex-shrink-0 border-b border-slate-700">
+              <div className="flex-shrink-0 border-b border-slate-700 bg-slate-800 px-6 py-4">
                 <div className="flex items-center gap-3 text-slate-300">
-                  <FileText className="w-5 h-5 text-green-400" />
+                  <FileText className="h-5 w-5 text-green-400" />
                   <span className="text-sm font-medium">Article</span>
                 </div>
               </div>
             )}
 
-            {/* ── Tabs ── */}
-            <div className="flex-1 overflow-hidden flex flex-col bg-white">
-              <div className="flex border-b border-slate-200 px-6 overflow-x-auto flex-shrink-0">
+            {/* ── Tabs + tab body: one scroll area so you can scroll up to the strip and down through content ── */}
+            <div
+              ref={belowLessonScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-white"
+            >
+              <div className="sticky top-0 z-10 flex overflow-x-auto border-b border-slate-200 bg-white/95 px-6 py-0 shadow-sm backdrop-blur-sm supports-[backdrop-filter]:bg-white/80">
                 {[
                   ['overview', isTextLesson ? 'Article' : 'Overview', isTextLesson ? FileText : FileText],
                   ['notes', 'Notes', StickyNote],
@@ -277,7 +286,7 @@ export default function CourseWatch() {
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="p-6">
                 {/* Overview / Article tab */}
                 {activeTab === 'overview' && (
                   <div className="max-w-3xl">
@@ -389,7 +398,7 @@ export default function CourseWatch() {
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

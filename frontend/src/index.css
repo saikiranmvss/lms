@@ -66,6 +66,19 @@
 .page-enter { opacity: 0; transform: translateY(8px); }
 .page-enter-active { opacity: 1; transform: translateY(0); transition: all 300ms ease; }
 
-/* Video player */
-.video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; }
-.video-wrapper > * { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+/* Course watch: video stays fixed above; max size leaves room for the scrollable tab pane below */
+.course-video-frame {
+  position: relative;
+  margin-inline: auto;
+  max-height: min(72vh, calc(100dvh - 8rem));
+  width: min(100%, calc(min(72vh, calc(100dvh - 8rem)) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  background: #000;
+  overflow: hidden;
+}
+.course-video-frame > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
