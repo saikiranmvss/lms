@@ -10,12 +10,16 @@ export const addReview = async (req, res) => {
     const enrollment = await pool.query('SELECT id FROM enrollments WHERE student_id = $1 AND course_id = $2', [req.user.id, courseId]);
     if (!enrollment.rows[0]) return sendError(res, 403, 'Must be enrolled to review');
 
-    const result = await pool.query(`
+    await pool.query(`
       INSERT INTO reviews (course_id, student_id, rating, comment)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (course_id, student_id) DO UPDATE SET rating = $3, comment = $4, updated_at = NOW()
-      RETURNING *
+      ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment), updated_at = NOW()
     `, [courseId, req.user.id, rating, comment]);
+
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE course_id = $1 AND student_id = $2',
+      [courseId, req.user.id]
+    );
 
     // Update course rating
     const stats = await pool.query('SELECT AVG(rating) as avg, COUNT(*) as total FROM reviews WHERE course_id = $1 AND is_approved = true', [courseId]);

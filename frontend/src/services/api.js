@@ -1,8 +1,15 @@
 import axios from 'axios';
 import useAuthStore from '../store/authStore.js';
 
+/** Dev: full origin from .env.development. Prod: same-origin `/api`. */
+export function getApiBaseURL() {
+  const origin = import.meta.env.VITE_API_ORIGIN;
+  if (origin) return `${String(origin).replace(/\/$/, '')}/api`;
+  return '/api';
+}
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseURL(),
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -38,7 +45,10 @@ api.interceptors.response.use(
       isRefreshing = true;
       const { refreshToken, updateToken, logout } = useAuthStore.getState();
       try {
-        const res = await axios.post('/api/auth/refresh', { refreshToken });
+        const res = await axios.post(`${getApiBaseURL()}/auth/refresh`, { refreshToken }, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000,
+        });
         const { accessToken, refreshToken: newRefresh } = res.data.data;
         updateToken(accessToken, newRefresh);
         processQueue(null, accessToken);

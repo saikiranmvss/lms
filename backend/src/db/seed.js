@@ -5,38 +5,37 @@ import pool from './index.js';
 async function seed() {
   console.log('🌱 Seeding database...');
   try {
-    // Users
     const adminHash = await bcrypt.hash('admin123', 12);
     const instructorHash = await bcrypt.hash('instructor123', 12);
     const studentHash = await bcrypt.hash('student123', 12);
 
-    const adminResult = await pool.query(`
-      INSERT INTO users (name, email, password_hash, role, is_verified, is_instructor_approved, bio)
-      VALUES ($1, $2, $3, $4, true, true, $5)
-      ON CONFLICT (email) DO UPDATE SET password_hash = $3
-      RETURNING id
-    `, ['Admin User', 'admin@learnhub.com', adminHash, 'admin', 'Platform administrator managing LearnHub.']);
+    await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, is_verified, is_instructor_approved, bio)
+       VALUES ($1, $2, $3, $4, 1, 1, $5)
+       ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), is_verified = 1, is_instructor_approved = 1`,
+      ['Admin User', 'admin@learnhub.com', adminHash, 'admin', 'Platform administrator managing LearnHub.']
+    );
+    await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, is_verified, is_instructor_approved, bio)
+       VALUES ($1, $2, $3, $4, 1, 1, $5)
+       ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), is_verified = 1, is_instructor_approved = 1`,
+      ['John Instructor', 'instructor@learnhub.com', instructorHash, 'instructor', 'Full-stack developer with 10 years of experience teaching web development and programming.']
+    );
+    await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, is_verified, bio)
+       VALUES ($1, $2, $3, $4, 1, $5)
+       ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), is_verified = 1`,
+      ['Jane Student', 'student@learnhub.com', studentHash, 'student', 'Passionate learner exploring new technologies.']
+    );
 
-    const instrResult = await pool.query(`
-      INSERT INTO users (name, email, password_hash, role, is_verified, is_instructor_approved, bio)
-      VALUES ($1, $2, $3, $4, true, true, $5)
-      ON CONFLICT (email) DO UPDATE SET password_hash = $3
-      RETURNING id
-    `, ['John Instructor', 'instructor@learnhub.com', instructorHash, 'instructor', 'Full-stack developer with 10 years of experience teaching web development and programming.']);
-
-    const studentResult = await pool.query(`
-      INSERT INTO users (name, email, password_hash, role, is_verified, bio)
-      VALUES ($1, $2, $3, $4, true, $5)
-      ON CONFLICT (email) DO UPDATE SET password_hash = $3
-      RETURNING id
-    `, ['Jane Student', 'student@learnhub.com', studentHash, 'student', 'Passionate learner exploring new technologies.']);
-
-    const adminId = adminResult.rows[0].id;
-    const instructorId = instrResult.rows[0].id;
-    const studentId = studentResult.rows[0].id;
+    const adminRow = await pool.query('SELECT id FROM users WHERE email = $1', ['admin@learnhub.com']);
+    const instrRow = await pool.query('SELECT id FROM users WHERE email = $1', ['instructor@learnhub.com']);
+    const studentRow = await pool.query('SELECT id FROM users WHERE email = $1', ['student@learnhub.com']);
+    const adminId = adminRow.rows[0].id;
+    const instructorId = instrRow.rows[0].id;
+    const studentId = studentRow.rows[0].id;
     console.log('✅ Users created');
 
-    // Categories
     const categories = [
       ['Web Development', 'web-development', 'Build modern websites and web apps', '💻'],
       ['Data Science', 'data-science', 'Learn data analysis and machine learning', '📊'],
@@ -52,15 +51,15 @@ async function seed() {
 
     const catIds = {};
     for (const [name, slug, desc, icon] of categories) {
-      const r = await pool.query(
-        'INSERT INTO categories (name, slug, description, icon) VALUES ($1,$2,$3,$4) ON CONFLICT (slug) DO UPDATE SET name=$1 RETURNING id',
+      await pool.query(
+        'INSERT INTO categories (name, slug, description, icon) VALUES ($1,$2,$3,$4) ON DUPLICATE KEY UPDATE name = VALUES(name)',
         [name, slug, desc, icon]
       );
+      const r = await pool.query('SELECT id FROM categories WHERE slug = $1', [slug]);
       catIds[slug] = r.rows[0].id;
     }
     console.log('✅ Categories created');
 
-    // Courses
     const courses = [
       {
         title: 'The Complete Web Development Bootcamp 2024',
@@ -72,7 +71,7 @@ async function seed() {
         what_you_learn: ['HTML5 and CSS3 from scratch', 'JavaScript ES6+ modern syntax', 'React.js with hooks', 'Node.js and Express.js', 'MongoDB and PostgreSQL', 'RESTful API design', 'Authentication with JWT', 'Deploy apps to cloud'],
         requirements: ['No programming experience needed', 'A computer with internet access', 'Eagerness to learn'],
         tags: ['html', 'css', 'javascript', 'react', 'nodejs'],
-        status: 'published', is_featured: true
+        status: 'published', is_featured: 1,
       },
       {
         title: 'Python for Data Science and Machine Learning',
@@ -84,7 +83,7 @@ async function seed() {
         what_you_learn: ['Python fundamentals', 'Data manipulation with Pandas', 'Data visualization', 'Machine learning algorithms', 'Neural networks basics', 'Model deployment'],
         requirements: ['Basic math knowledge', 'No prior Python experience needed'],
         tags: ['python', 'data-science', 'machine-learning'],
-        status: 'published', is_featured: true
+        status: 'published', is_featured: 1,
       },
       {
         title: 'React Native: Build Mobile Apps for iOS & Android',
@@ -96,7 +95,7 @@ async function seed() {
         what_you_learn: ['React Native fundamentals', 'Navigation and routing', 'State management with Redux', 'Native device features', 'App Store publishing'],
         requirements: ['Basic JavaScript knowledge', 'React basics helpful but not required'],
         tags: ['react-native', 'mobile', 'ios', 'android'],
-        status: 'published', is_featured: false
+        status: 'published', is_featured: 0,
       },
       {
         title: 'UI/UX Design Masterclass with Figma',
@@ -108,7 +107,7 @@ async function seed() {
         what_you_learn: ['Design principles and theory', 'Figma from beginner to advanced', 'User research methods', 'Wireframing and prototyping', 'Design systems'],
         requirements: ['No design experience required', 'A free Figma account'],
         tags: ['ui', 'ux', 'figma', 'design'],
-        status: 'published', is_featured: true
+        status: 'published', is_featured: 1,
       },
       {
         title: 'DevOps & Docker: Container Mastery',
@@ -120,7 +119,7 @@ async function seed() {
         what_you_learn: ['Docker fundamentals', 'Docker Compose', 'Kubernetes orchestration', 'CI/CD with GitHub Actions', 'AWS and cloud deployment'],
         requirements: ['Basic Linux command line', 'Programming experience helpful'],
         tags: ['docker', 'kubernetes', 'devops', 'aws'],
-        status: 'published', is_featured: false
+        status: 'published', is_featured: 0,
       },
       {
         title: 'Digital Marketing Complete Guide 2024',
@@ -132,28 +131,30 @@ async function seed() {
         what_you_learn: ['SEO fundamentals', 'Social media strategy', 'Email marketing', 'Paid advertising', 'Analytics and reporting'],
         requirements: ['No marketing experience needed', 'Basic computer skills'],
         tags: ['marketing', 'seo', 'social-media'],
-        status: 'published', is_featured: false
+        status: 'published', is_featured: 0,
       },
     ];
 
     const courseIds = [];
     for (const c of courses) {
-      const r = await pool.query(`
-        INSERT INTO courses (title, slug, description, short_description, category_id, level, price,
+      await pool.query(
+        `INSERT INTO courses (title, slug, description, short_description, category_id, level, price,
           avg_rating, total_reviews, total_enrollments, thumbnail, what_you_learn, requirements,
           tags, status, is_featured, instructor_id, total_lessons, duration_seconds)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-        ON CONFLICT (slug) DO UPDATE SET title=$1
-        RETURNING id
-      `, [c.title, c.slug, c.description, c.short_description, catIds[c.category],
+        ON DUPLICATE KEY UPDATE title = VALUES(title)`,
+        [
+          c.title, c.slug, c.description, c.short_description, catIds[c.category],
           c.level, c.price, c.avg_rating, c.total_reviews, c.total_enrollments,
-          c.thumbnail, c.what_you_learn, c.requirements, c.tags, c.status, c.is_featured,
-          instructorId, 24, 86400]);
-      courseIds.push(r.rows[0].id);
+          c.thumbnail, JSON.stringify(c.what_you_learn), JSON.stringify(c.requirements), JSON.stringify(c.tags),
+          c.status, c.is_featured, instructorId, 24, 86400,
+        ]
+      );
+      const cid = await pool.query('SELECT id FROM courses WHERE slug = $1', [c.slug]);
+      courseIds.push(cid.rows[0].id);
     }
     console.log('✅ Courses created');
 
-    // Sections and Lessons for first course
     const sectionTitles = [
       ['Getting Started', ['Introduction to the Course', 'Setting Up Your Environment', 'How to Get the Most Out of This Course']],
       ['HTML Fundamentals', ['What is HTML?', 'HTML Document Structure', 'Text Elements', 'Links and Images', 'HTML Forms']],
@@ -162,58 +163,56 @@ async function seed() {
     ];
 
     for (const [si, [sTitle, lessons]] of sectionTitles.entries()) {
-      const sRes = await pool.query(
-        'INSERT INTO sections (course_id, title, position) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id',
+      await pool.query(
+        'INSERT INTO sections (course_id, title, position) VALUES ($1,$2,$3)',
         [courseIds[0], sTitle, si]
       );
-      if (sRes.rows[0]) {
-        const sId = sRes.rows[0].id;
-        for (const [li, lTitle] of lessons.entries()) {
-          await pool.query(
-            `INSERT INTO lessons (section_id, course_id, title, type, video_url, duration_seconds, is_preview, is_published, position)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8) ON CONFLICT DO NOTHING`,
-            [sId, courseIds[0], lTitle, 'video',
-             li === 0 ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' : null,
-             Math.floor(Math.random() * 900) + 300, si === 0 && li === 0, li]
-          );
-        }
+      const sIdRow = await pool.query(
+        'SELECT id FROM sections WHERE course_id = $1 AND title = $2 AND `position` = $3',
+        [courseIds[0], sTitle, si]
+      );
+      const sId = sIdRow.rows[0].id;
+      for (const [li, lTitle] of lessons.entries()) {
+        await pool.query(
+          `INSERT INTO lessons (section_id, course_id, title, type, video_url, duration_seconds, is_preview, is_published, position)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8)`,
+          [sId, courseIds[0], lTitle, 'video',
+            li === 0 ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' : null,
+            Math.floor(Math.random() * 900) + 300, si === 0 && li === 0 ? 1 : 0, li]
+        );
       }
     }
 
-    // Update course lesson count
-    await pool.query(`
-      UPDATE courses SET total_lessons = (SELECT COUNT(*) FROM lessons WHERE course_id = courses.id), duration_seconds = total_lessons * 600 WHERE id = $1
-    `, [courseIds[0]]);
+    await pool.query(
+      'UPDATE courses SET total_lessons = (SELECT COUNT(*) FROM lessons WHERE course_id = courses.id), duration_seconds = total_lessons * 600 WHERE id = $1',
+      [courseIds[0]]
+    );
     console.log('✅ Sections and lessons created');
 
-    // Enroll student in first course
     await pool.query(
-      'INSERT INTO enrollments (student_id, course_id, completion_percentage) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      'INSERT IGNORE INTO enrollments (student_id, course_id, completion_percentage) VALUES ($1,$2,$3)',
       [studentId, courseIds[0], 25]
     );
     await pool.query(
-      'INSERT INTO enrollments (student_id, course_id, completion_percentage) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      'INSERT IGNORE INTO enrollments (student_id, course_id, completion_percentage) VALUES ($1,$2,$3)',
       [studentId, courseIds[1], 0]
     );
 
-    // Wishlist
     await pool.query(
-      'INSERT INTO wishlists (student_id, course_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      'INSERT IGNORE INTO wishlists (student_id, course_id) VALUES ($1,$2)',
       [studentId, courseIds[2]]
     );
 
-    // Reviews
     const reviewData = [
       [studentId, courseIds[0], 5, 'Absolutely amazing course! I went from zero to building full-stack apps. The instructor explains everything clearly.'],
     ];
     for (const [sid, cid, rating, comment] of reviewData) {
       await pool.query(
-        'INSERT INTO reviews (course_id, student_id, rating, comment, is_approved) VALUES ($1,$2,$3,$4,true) ON CONFLICT DO NOTHING',
+        'INSERT IGNORE INTO reviews (course_id, student_id, rating, comment, is_approved) VALUES ($1,$2,$3,$4,1)',
         [cid, sid, rating, comment]
       );
     }
 
-    // Notifications
     await pool.query(
       'INSERT INTO notifications (user_id, title, message, type) VALUES ($1,$2,$3,$4)',
       [studentId, 'Welcome to LearnHub!', 'Start exploring our course catalog and begin your learning journey.', 'info']

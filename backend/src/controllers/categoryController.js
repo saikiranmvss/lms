@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import pool from '../db/index.js';
 import { generateSlug, sendError, sendSuccess } from '../utils/helpers.js';
 
@@ -19,10 +20,12 @@ export const createCategory = async (req, res) => {
     const { name, description, icon } = req.body;
     if (!name) return sendError(res, 400, 'Name is required');
     const slug = generateSlug(name);
-    const result = await pool.query(
-      'INSERT INTO categories (name, slug, description, icon) VALUES ($1,$2,$3,$4) RETURNING *',
-      [name, slug, description, icon]
+    const id = randomUUID();
+    await pool.query(
+      'INSERT INTO categories (id, name, slug, description, icon) VALUES ($1,$2,$3,$4,$5)',
+      [id, name, slug, description, icon]
     );
+    const result = await pool.query('SELECT * FROM categories WHERE id = $1', [id]);
     sendSuccess(res, result.rows[0], 'Category created', 201);
   } catch (err) {
     sendError(res, 500, 'Failed to create category', err.message);
@@ -33,10 +36,11 @@ export const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, icon } = req.body;
-    const result = await pool.query(
-      'UPDATE categories SET name = COALESCE($1, name), description = COALESCE($2, description), icon = COALESCE($3, icon) WHERE id = $4 RETURNING *',
+    await pool.query(
+      'UPDATE categories SET name = COALESCE($1, name), description = COALESCE($2, description), icon = COALESCE($3, icon) WHERE id = $4',
       [name, description, icon, id]
     );
+    const result = await pool.query('SELECT * FROM categories WHERE id = $1', [id]);
     sendSuccess(res, result.rows[0], 'Category updated');
   } catch (err) {
     sendError(res, 500, 'Failed to update category', err.message);

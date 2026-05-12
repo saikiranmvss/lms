@@ -36,7 +36,7 @@ export const getMyEnrollments = async (req, res) => {
       JOIN courses c ON e.course_id = c.id
       LEFT JOIN users u ON c.instructor_id = u.id
       LEFT JOIN categories cat ON c.category_id = cat.id
-      WHERE e.student_id = $1 ORDER BY e.last_accessed_at DESC NULLS LAST, e.enrolled_at DESC
+      WHERE e.student_id = $1 ORDER BY (e.last_accessed_at IS NULL) ASC, e.last_accessed_at DESC, e.enrolled_at DESC
     `, [req.user.id]);
     sendSuccess(res, result.rows);
   } catch (err) {
@@ -54,12 +54,12 @@ export const updateProgress = async (req, res) => {
     await pool.query(`
       INSERT INTO progress_tracking (student_id, lesson_id, course_id, is_completed, watch_time_seconds, completed_at)
       VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (student_id, lesson_id) DO UPDATE SET
-        is_completed = GREATEST(progress_tracking.is_completed::int, $4::int)::boolean,
-        watch_time_seconds = GREATEST(progress_tracking.watch_time_seconds, $5),
-        completed_at = CASE WHEN $4 AND progress_tracking.completed_at IS NULL THEN NOW() ELSE progress_tracking.completed_at END,
+      ON DUPLICATE KEY UPDATE
+        is_completed = GREATEST(progress_tracking.is_completed, VALUES(is_completed)),
+        watch_time_seconds = GREATEST(progress_tracking.watch_time_seconds, VALUES(watch_time_seconds)),
+        completed_at = CASE WHEN VALUES(is_completed) = 1 AND progress_tracking.completed_at IS NULL THEN NOW() ELSE progress_tracking.completed_at END,
         updated_at = NOW()
-    `, [req.user.id, lessonId, courseId, isCompleted, watchTimeSeconds || 0, isCompleted ? new Date() : null]);
+    `, [req.user.id, lessonId, courseId, isCompleted ? 1 : 0, watchTimeSeconds || 0, isCompleted ? new Date() : null]);
 
     // Update enrollment completion percentage
     const totalLessons = await pool.query("SELECT COUNT(*) FROM lessons WHERE course_id = $1 AND is_published = true AND type != 'quiz'", [courseId]);
@@ -75,7 +75,7 @@ export const updateProgress = async (req, res) => {
     // Issue certificate if 100%
     if (percentage === 100) {
       await pool.query(
-        'INSERT INTO certificates (student_id, course_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        'INSERT IGNORE INTO certificates (student_id, course_id) VALUES ($1, $2)',
         [req.user.id, courseId]
       );
     }

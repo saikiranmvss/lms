@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import pool from '../db/index.js';
 import { sendError, sendSuccess } from '../utils/helpers.js';
 
@@ -22,10 +22,12 @@ export const register = async (req, res) => {
     if (existing.rows.length) return sendError(res, 409, 'Email already registered');
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const result = await pool.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
-      [name, email, passwordHash, role]
+    const id = randomUUID();
+    await pool.query(
+      'INSERT INTO users (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
+      [id, name, email, passwordHash, role]
     );
+    const result = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [id]);
     const user = result.rows[0];
     const { accessToken, refreshToken } = generateTokens(user.id);
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, user.id]);
@@ -101,9 +103,13 @@ export const getMe = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { name, bio, avatar } = req.body;
-    const result = await pool.query(
-      'UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar = COALESCE($3, avatar), updated_at = NOW() WHERE id = $4 RETURNING id, name, email, role, avatar, bio',
+    await pool.query(
+      'UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar = COALESCE($3, avatar), updated_at = NOW() WHERE id = $4',
       [name, bio, avatar, req.user.id]
+    );
+    const result = await pool.query(
+      'SELECT id, name, email, role, avatar, bio FROM users WHERE id = $1',
+      [req.user.id]
     );
     sendSuccess(res, result.rows[0], 'Profile updated');
   } catch (err) {

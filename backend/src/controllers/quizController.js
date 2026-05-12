@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import pool from '../db/index.js';
 import { sendError, sendSuccess } from '../utils/helpers.js';
 
@@ -6,10 +7,12 @@ export const createQuiz = async (req, res) => {
     const { lessonId, courseId, title, description, timeLimitMinutes, passingPercentage, maxAttempts } = req.body;
     const existing = await pool.query('SELECT id FROM quizzes WHERE lesson_id = $1', [lessonId]);
     if (existing.rows[0]) return sendSuccess(res, existing.rows[0], 'Quiz already exists');
-    const result = await pool.query(`
-      INSERT INTO quizzes (lesson_id, course_id, title, description, time_limit_minutes, passing_percentage, max_attempts)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
-    `, [lessonId, courseId, title, description, timeLimitMinutes || null, passingPercentage || 70, maxAttempts || 3]);
+    const qid = randomUUID();
+    await pool.query(`
+      INSERT INTO quizzes (id, lesson_id, course_id, title, description, time_limit_minutes, passing_percentage, max_attempts)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `, [qid, lessonId, courseId, title, description, timeLimitMinutes || null, passingPercentage || 70, maxAttempts || 3]);
+    const result = await pool.query('SELECT * FROM quizzes WHERE id = $1', [qid]);
     sendSuccess(res, result.rows[0], 'Quiz created', 201);
   } catch (err) {
     sendError(res, 500, 'Failed to create quiz', err.message);
@@ -20,7 +23,7 @@ export const updateQuiz = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, timeLimitMinutes, passingPercentage, maxAttempts } = req.body;
-    const result = await pool.query(`
+    await pool.query(`
       UPDATE quizzes SET
         title = COALESCE($1, title),
         description = COALESCE($2, description),
@@ -28,8 +31,9 @@ export const updateQuiz = async (req, res) => {
         passing_percentage = COALESCE($4, passing_percentage),
         max_attempts = COALESCE($5, max_attempts),
         updated_at = NOW()
-      WHERE id = $6 RETURNING *
+      WHERE id = $6
     `, [title, description, timeLimitMinutes || null, passingPercentage, maxAttempts, id]);
+    const result = await pool.query('SELECT * FROM quizzes WHERE id = $1', [id]);
     if (!result.rows[0]) return sendError(res, 404, 'Quiz not found');
     sendSuccess(res, result.rows[0], 'Quiz updated');
   } catch (err) {
@@ -90,12 +94,14 @@ export const addQuestion = async (req, res) => {
     const posResult = await pool.query('SELECT COALESCE(MAX(position), -1) + 1 as pos FROM quiz_questions WHERE quiz_id = $1', [quizId]);
     const opts = (type !== 'range_slider' && options) ? JSON.stringify(options) : null;
     const sliderCfg = (type === 'range_slider' && sliderConfig) ? JSON.stringify(sliderConfig) : null;
-    const correct = correctAnswers || [];
-    const result = await pool.query(`
-      INSERT INTO quiz_questions (quiz_id, question, type, options, slider_config, correct_answers, explanation, points, position)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-    `, [quizId, question, type || 'mcq', opts, sliderCfg, correct, explanation || null, points || 1, posResult.rows[0].pos]);
+    const correctJson = JSON.stringify(correctAnswers || []);
+    const qqid = randomUUID();
+    await pool.query(`
+      INSERT INTO quiz_questions (id, quiz_id, question, type, options, slider_config, correct_answers, explanation, points, position)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [qqid, quizId, question, type || 'mcq', opts, sliderCfg, correctJson, explanation || null, points || 1, posResult.rows[0].pos]);
     await pool.query('UPDATE quizzes SET updated_at = NOW() WHERE id = $1', [quizId]);
+    const result = await pool.query('SELECT * FROM quiz_questions WHERE id = $1', [qqid]);
     sendSuccess(res, result.rows[0], 'Question added', 201);
   } catch (err) {
     sendError(res, 500, 'Failed to add question', err.message);
@@ -108,7 +114,10 @@ export const updateQuestion = async (req, res) => {
     const { question, type, options, sliderConfig, correctAnswers, explanation, points } = req.body;
     const opts = (type !== 'range_slider' && options) ? JSON.stringify(options) : null;
     const sliderCfg = (type === 'range_slider' && sliderConfig) ? JSON.stringify(sliderConfig) : null;
-    const result = await pool.query(`
+    const corrParam = correctAnswers !== undefined
+      ? (Array.isArray(correctAnswers) ? JSON.stringify(correctAnswers) : correctAnswers)
+      : undefined;
+    await pool.query(`
       UPDATE quiz_questions SET
         question = COALESCE($1, question),
         type = COALESCE($2, type),
@@ -117,8 +126,9 @@ export const updateQuestion = async (req, res) => {
         correct_answers = COALESCE($5, correct_answers),
         explanation = COALESCE($6, explanation),
         points = COALESCE($7, points)
-      WHERE id = $8 RETURNING *
-    `, [question, type, opts, sliderCfg, correctAnswers, explanation, points, id]);
+      WHERE id = $8
+    `, [question, type, opts, sliderCfg, corrParam, explanation, points, id]);
+    const result = await pool.query('SELECT * FROM quiz_questions WHERE id = $1', [id]);
     if (!result.rows[0]) return sendError(res, 404, 'Question not found');
     sendSuccess(res, result.rows[0], 'Question updated');
   } catch (err) {
@@ -141,6 +151,20 @@ export const deleteQuestion = async (req, res) => {
     sendError(res, 500, 'Failed to delete question', err.message);
   }
 };
+
+function parseCorrectAnswers(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p.map(String) : [String(p)];
+    } catch {
+      return [raw];
+    }
+  }
+  return [String(raw)];
+}
 
 function gradeQuestion(q, userAnswer) {
   if (userAnswer === undefined || userAnswer === null || userAnswer === '') return false;
@@ -179,6 +203,12 @@ export const submitQuiz = async (req, res) => {
     const questionResults = {};
 
     for (const q of questions.rows) {
+      q.correct_answers = parseCorrectAnswers(q.correct_answers);
+      if (typeof q.slider_config === 'string' && q.slider_config) {
+        try { q.slider_config = JSON.parse(q.slider_config); } catch { q.slider_config = {}; }
+      } else if (!q.slider_config) {
+        q.slider_config = {};
+      }
       totalPoints += q.points;
       const userAnswer = answers[q.id];
       const isCorrect = gradeQuestion(q, userAnswer);
@@ -189,10 +219,12 @@ export const submitQuiz = async (req, res) => {
     const score = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0;
     const isPassed = score >= quiz.rows[0].passing_percentage;
 
-    const result = await pool.query(`
-      INSERT INTO quiz_attempts (quiz_id, student_id, answers, score, is_passed, time_taken_seconds)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
-    `, [quizId, req.user.id, JSON.stringify(answers), score.toFixed(2), isPassed, timeTakenSeconds]);
+    const aid = randomUUID();
+    await pool.query(`
+      INSERT INTO quiz_attempts (id, quiz_id, student_id, answers, score, is_passed, time_taken_seconds)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `, [aid, quizId, req.user.id, JSON.stringify(answers), score.toFixed(2), isPassed ? 1 : 0, timeTakenSeconds]);
+    const result = await pool.query('SELECT * FROM quiz_attempts WHERE id = $1', [aid]);
 
     sendSuccess(res, {
       attempt: result.rows[0],

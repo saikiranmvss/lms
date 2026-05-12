@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import pool from '../db/index.js';
 import { generateSlug, sendError, sendSuccess, buildPaginationMeta } from '../utils/helpers.js';
 
@@ -11,7 +12,12 @@ export const getCourses = async (req, res) => {
 
     if (category) { conditions.push(`cat.slug = $${idx++}`); params.push(category); }
     if (level && level !== 'all') { conditions.push(`c.level = $${idx++}`); params.push(level); }
-    if (search) { conditions.push(`(c.title ILIKE $${idx++} OR c.short_description ILIKE $${idx-1})`); params.push(`%${search}%`); }
+    if (search) {
+      const s = `%${search}%`;
+      conditions.push(`(LOWER(c.title) LIKE LOWER($${idx}) OR LOWER(COALESCE(c.short_description,'')) LIKE LOWER($${idx + 1}))`);
+      params.push(s, s);
+      idx += 2;
+    }
     if (minPrice !== undefined) { conditions.push(`c.price >= $${idx++}`); params.push(parseFloat(minPrice)); }
     if (maxPrice !== undefined) { conditions.push(`c.price <= $${idx++}`); params.push(parseFloat(maxPrice)); }
 
@@ -55,14 +61,29 @@ export const getCourseBySlug = async (req, res) => {
     const course = result.rows[0];
 
     const sections = await pool.query(`
-      SELECT s.*, json_agg(json_build_object(
-        'id', l.id, 'title', l.title, 'type', l.type, 'duration_seconds', l.duration_seconds,
-        'is_preview', l.is_preview, 'position', l.position,
-        'video_url', l.video_url, 'content', l.content, 'description', l.description
-      ) ORDER BY l.position) FILTER (WHERE l.id IS NOT NULL) as lessons
-      FROM sections s LEFT JOIN lessons l ON l.section_id = s.id
-      WHERE s.course_id = $1 GROUP BY s.id ORDER BY s.position
+      SELECT s.id, s.course_id, s.title, s.description, s.position, s.created_at,
+        (SELECT JSON_ARRAYAGG(
+          JSON_OBJECT(
+            'id', j.id, 'title', j.title, 'type', j.type, 'duration_seconds', j.duration_seconds,
+            'is_preview', j.is_preview, 'position', j.position,
+            'video_url', j.video_url, 'content', j.content, 'description', j.description
+          )
+        )
+        FROM (
+          SELECT l.id, l.title, l.type, l.duration_seconds, l.is_preview, l.position, l.video_url, l.content, l.description
+          FROM lessons l WHERE l.section_id = s.id ORDER BY l.position
+        ) j
+        ) AS lessons
+      FROM sections s
+      WHERE s.course_id = $1
+      ORDER BY s.position
     `, [course.id]);
+    for (const row of sections.rows) {
+      if (typeof row.lessons === 'string') {
+        try { row.lessons = JSON.parse(row.lessons); } catch { row.lessons = []; }
+      }
+      if (!row.lessons) row.lessons = [];
+    }
 
     const reviews = await pool.query(`
       SELECT r.*, u.name as student_name, u.avatar as student_avatar
@@ -89,11 +110,13 @@ export const createCourse = async (req, res) => {
     const { title, description, short_description, category_id, level, language, price, requirements, what_you_learn, tags } = req.body;
     if (!title) return sendError(res, 400, 'Title is required');
     const slug = generateSlug(title) + '-' + Date.now();
-
-    const result = await pool.query(`
-      INSERT INTO courses (title, slug, description, short_description, category_id, level, language, price, requirements, what_you_learn, tags, instructor_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
-    `, [title, slug, description, short_description, category_id, level || 'beginner', language || 'English', price || 0, requirements || [], what_you_learn || [], tags || [], req.user.id]);
+    const cid = randomUUID();
+    await pool.query(`
+      INSERT INTO courses (id, title, slug, description, short_description, category_id, level, language, price, requirements, what_you_learn, tags, instructor_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `, [cid, title, slug, description, short_description, category_id, level || 'beginner', language || 'English', price || 0,
+      JSON.stringify(requirements || []), JSON.stringify(what_you_learn || []), JSON.stringify(tags || []), req.user.id]);
+    const result = await pool.query('SELECT * FROM courses WHERE id = $1', [cid]);
 
     sendSuccess(res, result.rows[0], 'Course created', 201);
   } catch (err) {
@@ -109,7 +132,10 @@ export const updateCourse = async (req, res) => {
 
     const { title, description, short_description, category_id, level, language, price, discount_price, thumbnail, preview_video, requirements, what_you_learn, tags } = req.body;
 
-    const result = await pool.query(`
+    const reqJson = requirements != null ? JSON.stringify(requirements) : null;
+    const learnJson = what_you_learn != null ? JSON.stringify(what_you_learn) : null;
+    const tagsJson = tags != null ? JSON.stringify(tags) : null;
+    await pool.query(`
       UPDATE courses SET
         title = COALESCE($1, title), description = COALESCE($2, description),
         short_description = COALESCE($3, short_description), category_id = COALESCE($4, category_id),
@@ -118,8 +144,9 @@ export const updateCourse = async (req, res) => {
         thumbnail = COALESCE($9, thumbnail), preview_video = COALESCE($10, preview_video),
         requirements = COALESCE($11, requirements), what_you_learn = COALESCE($12, what_you_learn),
         tags = COALESCE($13, tags), updated_at = NOW()
-      WHERE id = $14 RETURNING *
-    `, [title, description, short_description, category_id, level, language, price, discount_price, thumbnail, preview_video, requirements, what_you_learn, tags, id]);
+      WHERE id = $14
+    `, [title, description, short_description, category_id, level, language, price, discount_price, thumbnail, preview_video, reqJson, learnJson, tagsJson, id]);
+    const result = await pool.query('SELECT * FROM courses WHERE id = $1', [id]);
 
     sendSuccess(res, result.rows[0], 'Course updated');
   } catch (err) {
@@ -149,7 +176,8 @@ export const publishCourse = async (req, res) => {
     const ownership = await pool.query('SELECT id FROM courses WHERE id = $1 AND instructor_id = $2', [id, req.user.id]);
     if (!ownership.rows[0] && req.user.role !== 'admin') return sendError(res, 403, 'Not authorized');
 
-    const result = await pool.query('UPDATE courses SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [status, id]);
+    await pool.query('UPDATE courses SET status = $1, updated_at = NOW() WHERE id = $2', [status, id]);
+    const result = await pool.query('SELECT * FROM courses WHERE id = $1', [id]);
     sendSuccess(res, result.rows[0], 'Course status updated');
   } catch (err) {
     sendError(res, 500, 'Failed to update course status', err.message);

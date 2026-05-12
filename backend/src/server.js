@@ -28,8 +28,10 @@ const PORT = process.env.PORT || 3001;
 
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
+// Reflect request Origin so dev works for both http://localhost:5000 and http://127.0.0.1:5000
+// and when the SPA calls the API at http://127.0.0.1:3001 (VITE_API_ORIGIN).
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: true,
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));

@@ -18,9 +18,9 @@ export const getDashboardStats = async (req, res) => {
     `);
 
     const monthlyRevenue = await pool.query(`
-      SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as revenue, COUNT(*) as transactions
-      FROM transactions WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 months'
-      GROUP BY month ORDER BY month
+      SELECT DATE_FORMAT(created_at, '%Y-%m-01') as month, SUM(amount) as revenue, COUNT(*) as transactions
+      FROM transactions WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY month
     `);
 
     sendSuccess(res, {
@@ -50,7 +50,12 @@ export const getAllUsers = async (req, res) => {
     let idx = 1;
 
     if (role) { conditions.push(`role = $${idx++}`); params.push(role); }
-    if (search) { conditions.push(`(name ILIKE $${idx++} OR email ILIKE $${idx-1})`); params.push(`%${search}%`); }
+    if (search) {
+      const s = `%${search}%`;
+      conditions.push(`(LOWER(name) LIKE LOWER($${idx}) OR LOWER(email) LIKE LOWER($${idx + 1}))`);
+      params.push(s, s);
+      idx += 2;
+    }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     params.push(parseInt(limit), offset);
@@ -72,14 +77,19 @@ export const updateUserStatus = async (req, res) => {
     const { id } = req.params;
     const { is_suspended, is_instructor_approved, role } = req.body;
 
-    const result = await pool.query(`
+    await pool.query(`
       UPDATE users SET
         is_suspended = COALESCE($1, is_suspended),
         is_instructor_approved = COALESCE($2, is_instructor_approved),
         role = COALESCE($3, role),
         updated_at = NOW()
-      WHERE id = $4 RETURNING id, name, email, role, is_suspended, is_instructor_approved
+      WHERE id = $4
     `, [is_suspended, is_instructor_approved, role, id]);
+
+    const result = await pool.query(
+      'SELECT id, name, email, role, is_suspended, is_instructor_approved FROM users WHERE id = $1',
+      [id]
+    );
 
     if (!result.rows[0]) return sendError(res, 404, 'User not found');
     sendSuccess(res, result.rows[0], 'User updated');
@@ -97,7 +107,11 @@ export const getAllCourses = async (req, res) => {
     let idx = 1;
 
     if (status) { conditions.push(`c.status = $${idx++}`); params.push(status); }
-    if (search) { conditions.push(`c.title ILIKE $${idx++}`); params.push(`%${search}%`); }
+    if (search) {
+      conditions.push(`LOWER(c.title) LIKE LOWER($${idx})`);
+      params.push(`%${search}%`);
+      idx += 1;
+    }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     params.push(parseInt(limit), offset);
@@ -119,10 +133,11 @@ export const approveCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const result = await pool.query(
-      "UPDATE courses SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+    await pool.query(
+      "UPDATE courses SET status = $1, updated_at = NOW() WHERE id = $2",
       [status, id]
     );
+    const result = await pool.query('SELECT * FROM courses WHERE id = $1', [id]);
     if (!result.rows[0]) return sendError(res, 404, 'Course not found');
     sendSuccess(res, result.rows[0], 'Course status updated');
   } catch (err) {
@@ -135,9 +150,9 @@ export const getRevenueAnalytics = async (req, res) => {
     const [total, monthly, topCourses] = await Promise.all([
       pool.query("SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as transactions FROM transactions WHERE status='completed'"),
       pool.query(`
-        SELECT DATE_TRUNC('month', created_at) as month, SUM(amount) as revenue, COUNT(*) as count
-        FROM transactions WHERE status='completed' AND created_at >= NOW() - INTERVAL '12 months'
-        GROUP BY month ORDER BY month
+        SELECT DATE_FORMAT(created_at, '%Y-%m-01') as month, SUM(amount) as revenue, COUNT(*) as count
+        FROM transactions WHERE status='completed' AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY month
       `),
       pool.query(`
         SELECT c.id, c.title, c.thumbnail, SUM(t.amount) as revenue, COUNT(t.id) as sales
@@ -167,10 +182,10 @@ export const getInstructorAnalytics = async (req, res) => {
     ]);
 
     const monthlyEnrollments = await pool.query(`
-      SELECT DATE_TRUNC('month', e.enrolled_at) as month, COUNT(*) as enrollments
+      SELECT DATE_FORMAT(e.enrolled_at, '%Y-%m-01') as month, COUNT(*) as enrollments
       FROM enrollments e JOIN courses c ON e.course_id = c.id
-      WHERE c.instructor_id = $1 AND e.enrolled_at >= NOW() - INTERVAL '6 months'
-      GROUP BY month ORDER BY month
+      WHERE c.instructor_id = $1 AND e.enrolled_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(e.enrolled_at, '%Y-%m') ORDER BY month
     `, [instructorId]);
 
     sendSuccess(res, {

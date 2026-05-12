@@ -133,3 +133,6 @@ cython_debug/
 
 # PyCharm
 .idea/
+
+frontend/node_modules/*
+backend/node_modules/*
