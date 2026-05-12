@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -229,20 +229,21 @@ function QuizBuilderModal({ lesson, courseId, onClose }) {
         return { quiz: r.data.data, questions: [] };
       }
     },
-    onSuccess: (data) => {
-      if (!settings) {
-        setSettings({
-          title: data.quiz.title || lesson.title,
-          passingPercentage: data.quiz.passing_percentage || 70,
-          timeLimitMinutes: data.quiz.time_limit_minutes || '',
-          maxAttempts: data.quiz.max_attempts || 3,
-        });
-      }
-    },
   });
 
   const quiz = quizData?.quiz;
   const questions = quizData?.questions || [];
+
+  useEffect(() => {
+    if (quiz && !settings) {
+      setSettings({
+        title: quiz.title || lesson.title,
+        passingPercentage: quiz.passing_percentage ?? 70,
+        timeLimitMinutes: quiz.time_limit_minutes ?? '',
+        maxAttempts: quiz.max_attempts ?? 3,
+      });
+    }
+  }, [quiz]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: (data) => quizService.update(quiz.id, data),
