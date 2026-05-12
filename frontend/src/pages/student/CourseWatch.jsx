@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, CheckCircle, Circle, ChevronDown, ChevronRight, MessageSquare, FileText, Download, StickyNote, ArrowLeft } from 'lucide-react';
+import {
+  ChevronLeft, CheckCircle, Circle, ChevronDown, ChevronRight,
+  MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle
+} from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { courseService, enrollmentService, discussionService, noteService } from '../../services/courseService.js';
 import { formatDuration, formatDate, getInitials, timeAgo } from '../../utils/helpers.js';
 import { PageLoader } from '../../components/common/LoadingSpinner.jsx';
+import QuizPlayer from '../../components/quiz/QuizPlayer.jsx';
 import useAuthStore from '../../store/authStore.js';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -44,13 +48,17 @@ export default function CourseWatch() {
     enabled: !!courseData?.course?.id && activeTab === 'notes',
   });
 
-  // Set first lesson
   useEffect(() => {
     if (courseData?.sections?.length > 0 && !currentLesson) {
       const first = courseData.sections[0]?.lessons?.[0];
       if (first) setCurrentLesson(first);
     }
   }, [courseData]);
+
+  // Reset tab to overview when switching lessons (unless quiz — keep quiz active)
+  useEffect(() => {
+    if (currentLesson?.type !== 'quiz') setActiveTab('overview');
+  }, [currentLesson?.id]);
 
   const progressMutation = useMutation({
     mutationFn: (data) => enrollmentService.updateProgress(data),
@@ -59,30 +67,17 @@ export default function CourseWatch() {
 
   const noteMutation = useMutation({
     mutationFn: (data) => noteService.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notes']);
-      setNoteContent('');
-      toast.success('Note saved');
-    },
+    onSuccess: () => { queryClient.invalidateQueries(['notes']); setNoteContent(''); toast.success('Note saved'); },
   });
 
   const questionMutation = useMutation({
     mutationFn: (data) => discussionService.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['lesson', currentLesson?.id]);
-      setQuestionContent('');
-      toast.success('Question posted');
-    },
+    onSuccess: () => { queryClient.invalidateQueries(['lesson', currentLesson?.id]); setQuestionContent(''); toast.success('Question posted'); },
   });
 
   const markComplete = useCallback((lessonId) => {
     if (!courseData?.course?.id) return;
-    progressMutation.mutate({
-      lessonId,
-      courseId: courseData.course.id,
-      isCompleted: true,
-      watchTimeSeconds: currentLesson?.duration_seconds || 0,
-    });
+    progressMutation.mutate({ lessonId, courseId: courseData.course.id, isCompleted: true, watchTimeSeconds: currentLesson?.duration_seconds || 0 });
     toast.success('Lesson marked as complete!');
   }, [courseData, currentLesson]);
 
@@ -93,12 +88,12 @@ export default function CourseWatch() {
   if (!courseData) return <div className="text-center py-20 text-red-500">Course not found</div>;
 
   const { course, sections } = courseData;
+  const isQuizLesson = currentLesson?.type === 'quiz';
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
       {/* Sidebar */}
       <div className={clsx('flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-300', sidebarOpen ? 'w-80' : 'w-0 overflow-hidden')}>
-        {/* Course title */}
         <div className="p-4 border-b border-slate-800">
           <Link to={`/courses/${slug}`} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-3 transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back to course
@@ -111,17 +106,17 @@ export default function CourseWatch() {
                 <span>{progressData.enrollment.completion_percentage}%</span>
               </div>
               <div className="bg-slate-700 rounded-full h-1.5">
-                <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${progressData.enrollment.completion_percentage}%` }} />
+                <div className="bg-primary-500 h-1.5 rounded-full transition-all" style={{ width: `${progressData.enrollment.completion_percentage}%` }} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Sections */}
         <div className="flex-1 overflow-y-auto">
           {sections.map((section, si) => (
             <div key={section.id}>
-              <button onClick={() => setOpenSections(prev => prev.includes(si) ? prev.filter(x => x !== si) : [...prev, si])}
+              <button
+                onClick={() => setOpenSections(prev => prev.includes(si) ? prev.filter(x => x !== si) : [...prev, si])}
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-800 transition-colors">
                 <span className="text-sm font-semibold text-slate-200 pr-2">{section.title}</span>
                 {openSections.includes(si) ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />}
@@ -134,10 +129,12 @@ export default function CourseWatch() {
                         currentLesson?.id === lesson.id ? 'border-primary-500 bg-slate-800' : 'border-transparent')}>
                       {isCompleted(lesson.id)
                         ? <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
-                        : <Circle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />}
+                        : lesson.type === 'quiz'
+                          ? <HelpCircle className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                          : <Circle className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />}
                       <div className="min-w-0">
                         <p className={clsx('text-xs leading-snug', currentLesson?.id === lesson.id ? 'text-white font-medium' : 'text-slate-400')}>{lesson.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{formatDuration(lesson.duration_seconds)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 capitalize">{lesson.type === 'quiz' ? 'Quiz' : formatDuration(lesson.duration_seconds)}</p>
                       </div>
                     </button>
                   ))}
@@ -156,123 +153,150 @@ export default function CourseWatch() {
             <ChevronLeft className={clsx('w-5 h-5 transition-transform', !sidebarOpen && 'rotate-180')} />
           </button>
           <span className="text-white font-medium text-sm truncate mx-4">{currentLesson?.title}</span>
-          <button onClick={() => currentLesson && markComplete(currentLesson.id)}
-            disabled={isCompleted(currentLesson?.id) || progressMutation.isPending}
-            className={clsx('flex items-center gap-2 text-sm font-medium px-4 py-1.5 rounded-lg transition-all',
-              isCompleted(currentLesson?.id)
-                ? 'bg-green-600/20 text-green-400 cursor-default'
-                : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-95')}>
-            <CheckCircle className="w-4 h-4" />
-            {isCompleted(currentLesson?.id) ? 'Completed' : 'Mark Complete'}
-          </button>
+          {!isQuizLesson && (
+            <button
+              onClick={() => currentLesson && markComplete(currentLesson.id)}
+              disabled={isCompleted(currentLesson?.id) || progressMutation.isPending}
+              className={clsx('flex items-center gap-2 text-sm font-medium px-4 py-1.5 rounded-lg transition-all',
+                isCompleted(currentLesson?.id)
+                  ? 'bg-green-600/20 text-green-400 cursor-default'
+                  : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-95')}>
+              <CheckCircle className="w-4 h-4" />
+              {isCompleted(currentLesson?.id) ? 'Completed' : 'Mark Complete'}
+            </button>
+          )}
+          {isQuizLesson && (
+            <div className={clsx('flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg',
+              isCompleted(currentLesson?.id) ? 'bg-green-600/20 text-green-400' : 'bg-purple-600/20 text-purple-300')}>
+              <HelpCircle className="w-4 h-4" />
+              {isCompleted(currentLesson?.id) ? 'Passed' : 'Quiz'}
+            </div>
+          )}
         </div>
 
-        {/* Video */}
-        <div className="bg-black flex-shrink-0">
-          <div className="video-wrapper" style={{ paddingBottom: '45%' }}>
-            {currentLesson?.video_url ? (
-              <ReactPlayer url={currentLesson.video_url} width="100%" height="100%" controls playing={false} />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-slate-900">
-                <div className="text-center text-slate-400">
-                  <FileText className="w-16 h-16 mx-auto mb-3 opacity-50" />
-                  <p>{currentLesson?.type === 'text' ? 'Text Lesson' : 'No video available'}</p>
-                </div>
-              </div>
-            )}
+        {/* Quiz lesson — full-height quiz player */}
+        {isQuizLesson ? (
+          <div className="flex-1 overflow-y-auto bg-slate-50">
+            <QuizPlayer
+              lessonId={currentLesson.id}
+              courseId={course.id}
+              onComplete={() => markComplete(currentLesson.id)}
+            />
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-white">
-          <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
-            {[
-              ['overview', 'Overview', FileText],
-              ['notes', 'Notes', StickyNote],
-              ['discussions', 'Q&A', MessageSquare],
-              ['resources', 'Resources', Download],
-            ].map(([id, label, Icon]) => (
-              <button key={id} onClick={() => setActiveTab(id)}
-                className={clsx('flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap',
-                  activeTab === id ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700')}>
-                <Icon className="w-4 h-4" />{label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6">
-            {activeTab === 'overview' && (
-              <div className="max-w-3xl">
-                <h2 className="text-xl font-bold text-slate-900 mb-4">{currentLesson?.title}</h2>
-                {currentLesson?.description && <p className="text-slate-600 leading-relaxed mb-6">{currentLesson.description}</p>}
-                {currentLesson?.content && (
-                  <div className="prose prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
-                )}
-              </div>
-            )}
-
-            {activeTab === 'notes' && (
-              <div className="max-w-3xl space-y-5">
-                <div className="card p-4">
-                  <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} placeholder="Write a note for this lesson..." rows={3} className="input resize-none" />
-                  <button onClick={() => noteMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: noteContent })}
-                    disabled={!noteContent.trim() || noteMutation.isPending} className="btn-primary mt-3 text-sm">
-                    Save Note
-                  </button>
-                </div>
-                {(notes || []).map((note) => (
-                  <div key={note.id} className="card p-4">
-                    <p className="text-sm text-slate-700">{note.content}</p>
-                    <p className="text-xs text-slate-500 mt-2">{note.lesson_title} • {formatDate(note.created_at)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeTab === 'discussions' && (
-              <div className="max-w-3xl space-y-5">
-                <div className="card p-4">
-                  <textarea value={questionContent} onChange={(e) => setQuestionContent(e.target.value)} placeholder="Ask a question..." rows={3} className="input resize-none" />
-                  <button onClick={() => questionMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: questionContent })}
-                    disabled={!questionContent.trim() || questionMutation.isPending} className="btn-primary mt-3 text-sm">
-                    Post Question
-                  </button>
-                </div>
-                {(lessonData?.discussions || []).map((d) => (
-                  <div key={d.id} className="card p-4">
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-semibold flex-shrink-0">
-                        {getInitials(d.name)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-slate-900">{d.name}</span>
-                          <span className="text-xs text-slate-500">{timeAgo(d.created_at)}</span>
-                        </div>
-                        <p className="text-sm text-slate-700 mt-1">{d.content}</p>
-                      </div>
+        ) : (
+          <>
+            {/* Video */}
+            <div className="bg-black flex-shrink-0">
+              <div className="video-wrapper" style={{ paddingBottom: '45%' }}>
+                {currentLesson?.video_url ? (
+                  <ReactPlayer url={currentLesson.video_url} width="100%" height="100%" controls playing={false} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-900">
+                    <div className="text-center text-slate-400">
+                      <FileText className="w-16 h-16 mx-auto mb-3 opacity-50" />
+                      <p>{currentLesson?.type === 'text' ? 'Text Lesson' : 'No video available'}</p>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            </div>
 
-            {activeTab === 'resources' && (
-              <div className="max-w-3xl space-y-3">
-                {(lessonData?.resources || []).length === 0 ? (
-                  <p className="text-slate-500 text-sm">No resources for this lesson.</p>
-                ) : lessonData.resources.map((res) => (
-                  <a key={res.id} href={res.url} target="_blank" rel="noopener noreferrer"
-                    className="card p-4 flex items-center gap-3 hover:shadow-card-hover transition-all">
-                    <Download className="w-5 h-5 text-primary-600" />
-                    <span className="text-sm font-medium text-slate-900">{res.title}</span>
-                    <span className="ml-auto text-xs text-slate-500">{res.type}</span>
-                  </a>
+            {/* Tabs */}
+            <div className="flex-1 overflow-hidden flex flex-col bg-white">
+              <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
+                {[
+                  ['overview', 'Overview', FileText],
+                  ['notes', 'Notes', StickyNote],
+                  ['discussions', 'Q&A', MessageSquare],
+                  ['resources', 'Resources', Download],
+                ].map(([id, label, Icon]) => (
+                  <button key={id} onClick={() => setActiveTab(id)}
+                    className={clsx('flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap',
+                      activeTab === id ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700')}>
+                    <Icon className="w-4 h-4" />{label}
+                  </button>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {activeTab === 'overview' && (
+                  <div className="max-w-3xl">
+                    <h2 className="text-xl font-bold text-slate-900 mb-4">{currentLesson?.title}</h2>
+                    {currentLesson?.description && <p className="text-slate-600 leading-relaxed mb-6">{currentLesson.description}</p>}
+                    {currentLesson?.content && (
+                      <div className="prose prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: currentLesson.content }} />
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'notes' && (
+                  <div className="max-w-3xl space-y-5">
+                    <div className="card p-4">
+                      <textarea value={noteContent} onChange={e => setNoteContent(e.target.value)}
+                        placeholder="Write a note for this lesson..." rows={3} className="input resize-none" />
+                      <button
+                        onClick={() => noteMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: noteContent })}
+                        disabled={!noteContent.trim() || noteMutation.isPending} className="btn-primary mt-3 text-sm">
+                        Save Note
+                      </button>
+                    </div>
+                    {(notes || []).map((note) => (
+                      <div key={note.id} className="card p-4">
+                        <p className="text-sm text-slate-700">{note.content}</p>
+                        <p className="text-xs text-slate-500 mt-2">{note.lesson_title} • {formatDate(note.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeTab === 'discussions' && (
+                  <div className="max-w-3xl space-y-5">
+                    <div className="card p-4">
+                      <textarea value={questionContent} onChange={e => setQuestionContent(e.target.value)}
+                        placeholder="Ask a question..." rows={3} className="input resize-none" />
+                      <button
+                        onClick={() => questionMutation.mutate({ lessonId: currentLesson?.id, courseId: course.id, content: questionContent })}
+                        disabled={!questionContent.trim() || questionMutation.isPending} className="btn-primary mt-3 text-sm">
+                        Post Question
+                      </button>
+                    </div>
+                    {(lessonData?.discussions || []).map((d) => (
+                      <div key={d.id} className="card p-4">
+                        <div className="flex gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-semibold flex-shrink-0">
+                            {getInitials(d.name)}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-slate-900">{d.name}</span>
+                              <span className="text-xs text-slate-500">{timeAgo(d.created_at)}</span>
+                            </div>
+                            <p className="text-sm text-slate-700 mt-1">{d.content}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeTab === 'resources' && (
+                  <div className="max-w-3xl space-y-3">
+                    {(lessonData?.resources || []).length === 0 ? (
+                      <p className="text-slate-500 text-sm">No resources for this lesson.</p>
+                    ) : lessonData.resources.map((res) => (
+                      <a key={res.id} href={res.url} target="_blank" rel="noopener noreferrer"
+                        className="card p-4 flex items-center gap-3 hover:shadow-card-hover transition-all">
+                        <Download className="w-5 h-5 text-primary-600" />
+                        <span className="text-sm font-medium text-slate-900">{res.title}</span>
+                        <span className="ml-auto text-xs text-slate-500">{res.type}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
