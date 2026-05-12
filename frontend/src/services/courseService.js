@@ -57,6 +57,19 @@ export const notificationService = {
   delete: (id) => api.delete(`/notifications/${id}`),
 };
 
+export const uploadService = {
+  uploadVideo: (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('video', file);
+    return api.post('/upload/video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
+      },
+    });
+  },
+};
+
 export const quizService = {
   create: (data) => api.post('/quizzes', data),
   update: (id, data) => api.put(`/quizzes/${id}`, data),

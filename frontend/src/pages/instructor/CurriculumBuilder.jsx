@@ -5,9 +5,9 @@ import {
   Plus, Pencil, Trash2, GripVertical, ChevronDown, ChevronRight,
   Video, FileText, HelpCircle, ArrowLeft, Settings, ListChecks,
   CheckSquare, ToggleLeft, AlignLeft, Check, X, Clock, Target,
-  RefreshCw, BookOpen, Sliders
+  RefreshCw, BookOpen, Sliders, UploadCloud, Link2, AlertCircle
 } from 'lucide-react';
-import { courseService, quizService } from '../../services/courseService.js';
+import { courseService, quizService, uploadService } from '../../services/courseService.js';
 import { PageLoader } from '../../components/common/LoadingSpinner.jsx';
 import Modal from '../../components/common/Modal.jsx';
 import toast from 'react-hot-toast';
@@ -213,7 +213,7 @@ function QuestionForm({ form, onChange }) {
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Default Value</label>
               <input type="number" value={cfg.defaultValue}
-                onChange={e => setCfg('defaultValue', parseFloat(e.target.value))}
+                onChange={e => setCfg('defaultValue', parseFloat(e.target.value) || 0)}
                 min={cfg.min} max={cfg.max} className="input text-sm" />
             </div>
             <div>
@@ -248,7 +248,7 @@ function QuestionForm({ form, onChange }) {
                 <Target className="w-3 h-3 text-green-500" /> Correct Answer
               </label>
               <input type="number" value={cfg.correctAnswer}
-                onChange={e => setCfg('correctAnswer', parseFloat(e.target.value))}
+                onChange={e => setCfg('correctAnswer', parseFloat(e.target.value) || 0)}
                 min={cfg.min} max={cfg.max} step={cfg.step}
                 className="input text-sm border-green-300 focus:border-green-400" />
             </div>
@@ -581,6 +581,9 @@ export default function CurriculumBuilder() {
   const [quizModal, setQuizModal] = useState(null);
   const [sectionForm, setSectionForm] = useState({ title: '', description: '' });
   const [lessonForm, setLessonForm] = useState({ title: '', type: 'video', videoUrl: '', content: '', durationSeconds: '', isPreview: false });
+  const [videoInputMode, setVideoInputMode] = useState('url'); // 'url' | 'upload'
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
   const { data: sections, isLoading } = useQuery({
     queryKey: ['sections', courseId],
@@ -646,6 +649,23 @@ export default function CurriculumBuilder() {
     if (!sectionForm.title.trim()) return toast.error('Title required');
     if (sectionModal.editing) updateSectionMutation.mutate({ id: sectionModal.editing.id, data: sectionForm });
     else createSectionMutation.mutate(sectionForm);
+  };
+
+  const handleVideoFileUpload = async (file) => {
+    if (!file) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const res = await uploadService.uploadVideo(file, setUploadProgress);
+      const url = res.data.data.url;
+      setLessonForm(prev => ({ ...prev, videoUrl: url }));
+      toast.success('Video uploaded successfully!');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleLessonSubmit = () => {
@@ -815,10 +835,72 @@ export default function CurriculumBuilder() {
               className="input" placeholder={lessonForm.type === 'quiz' ? 'e.g., Chapter 1 Quiz' : 'e.g., Introduction'} autoFocus />
           </div>
           {lessonForm.type === 'video' && (
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Video URL</label>
-              <input value={lessonForm.videoUrl} onChange={e => setLessonForm({ ...lessonForm, videoUrl: e.target.value })}
-                className="input" placeholder="YouTube, Vimeo, or direct video URL" />
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Video Source</label>
+              {/* Toggle tabs */}
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
+                <button type="button" onClick={() => setVideoInputMode('url')}
+                  className={clsx('flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors',
+                    videoInputMode === 'url' ? 'bg-primary-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}>
+                  <Link2 className="w-3.5 h-3.5" /> Paste URL
+                </button>
+                <button type="button" onClick={() => setVideoInputMode('upload')}
+                  className={clsx('flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors',
+                    videoInputMode === 'upload' ? 'bg-primary-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}>
+                  <UploadCloud className="w-3.5 h-3.5" /> Upload File
+                </button>
+              </div>
+
+              {videoInputMode === 'url' && (
+                <div>
+                  <input value={lessonForm.videoUrl} onChange={e => setLessonForm({ ...lessonForm, videoUrl: e.target.value })}
+                    className="input" placeholder="https://youtube.com/watch?v=... or https://vimeo.com/..." />
+                  <p className="text-xs text-slate-400 mt-1">Supports YouTube, Vimeo, and direct video links (.mp4, .webm)</p>
+                </div>
+              )}
+
+              {videoInputMode === 'upload' && (
+                <div>
+                  {isUploading ? (
+                    <div className="border-2 border-dashed border-primary-200 rounded-xl p-6 text-center bg-primary-50">
+                      <UploadCloud className="w-8 h-8 text-primary-400 mx-auto mb-2 animate-pulse" />
+                      <p className="text-sm font-medium text-primary-700 mb-2">Uploading... {uploadProgress}%</p>
+                      <div className="w-full bg-primary-100 rounded-full h-2">
+                        <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                      </div>
+                    </div>
+                  ) : lessonForm.videoUrl && videoInputMode === 'upload' ? (
+                    <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                      <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-green-800">Video uploaded!</p>
+                        <p className="text-xs text-green-600 truncate">{lessonForm.videoUrl}</p>
+                      </div>
+                      <button type="button" onClick={() => setLessonForm({ ...lessonForm, videoUrl: '' })}
+                        className="text-green-400 hover:text-red-500 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="block cursor-pointer">
+                      <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-primary-400 hover:bg-primary-50 transition-all">
+                        <UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                        <p className="text-sm font-medium text-slate-700">Click to select a video file</p>
+                        <p className="text-xs text-slate-400 mt-1">MP4, WebM, MOV, AVI — up to 2 GB</p>
+                      </div>
+                      <input type="file" accept="video/*" className="hidden"
+                        onChange={e => handleVideoFileUpload(e.target.files?.[0])} />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {lessonForm.videoUrl && !isUploading && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <span className="truncate">URL set: {lessonForm.videoUrl}</span>
+                </div>
+              )}
             </div>
           )}
           {lessonForm.type === 'text' && (

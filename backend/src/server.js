@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
 import courseRoutes from './routes/courses.js';
@@ -18,10 +20,13 @@ import quizRoutes from './routes/quizzes.js';
 import discussionRoutes from './routes/discussions.js';
 import noteRoutes from './routes/notes.js';
 import certificateRoutes from './routes/certificates.js';
+import uploadRoutes from './routes/upload.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set('trust proxy', 1);
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
@@ -29,6 +34,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, '../public')));
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true });
 app.use('/api', limiter);
@@ -47,6 +53,7 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/discussions', discussionRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/certificates', certificateRoutes);
+app.use('/api/upload', uploadRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

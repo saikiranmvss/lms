@@ -57,7 +57,8 @@ export const getCourseBySlug = async (req, res) => {
     const sections = await pool.query(`
       SELECT s.*, json_agg(json_build_object(
         'id', l.id, 'title', l.title, 'type', l.type, 'duration_seconds', l.duration_seconds,
-        'is_preview', l.is_preview, 'position', l.position
+        'is_preview', l.is_preview, 'position', l.position,
+        'video_url', l.video_url, 'content', l.content, 'description', l.description
       ) ORDER BY l.position) FILTER (WHERE l.id IS NOT NULL) as lessons
       FROM sections s LEFT JOIN lessons l ON l.section_id = s.id
       WHERE s.course_id = $1 GROUP BY s.id ORDER BY s.position
