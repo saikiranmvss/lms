@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import useAuthStore from './store/authStore.js';
 import useUiStore from './store/uiStore.js';
+import { routerBasename } from './utils/basePath.js';
 
 // Layouts
 import PublicLayout from './layouts/PublicLayout.jsx';
@@ -61,7 +62,7 @@ export default function App() {
   }, [darkMode]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename()}>
       <Routes>
         {/* Public Routes */}
         <Route element={<PublicLayout />}>

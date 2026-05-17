@@ -26,3 +26,7 @@ location ${BASE_PATH} {
     index index.html;
     try_files $uri $uri/ ${BASE_PATH}index.html;
 }
+
+location = ${BASE_PATH_PREFIX} {
+    return 301 ${BASE_PATH};
+}

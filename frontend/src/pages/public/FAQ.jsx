@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -45,7 +46,7 @@ export default function FAQ() {
       <div className="mt-14 card p-8 text-center bg-primary-50 border-primary-100">
         <h3 className="font-bold text-slate-900 text-xl mb-2">Still have questions?</h3>
         <p className="text-slate-600 mb-5">Can't find the answer you're looking for? Our friendly team is here to help.</p>
-        <a href="/contact" className="btn-primary inline-block">Contact Support</a>
+        <Link to="/contact" className="btn-primary inline-block">Contact Support</Link>
       </div>
     </div>
   );

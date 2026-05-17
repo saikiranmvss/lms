@@ -1,12 +1,8 @@
 import axios from 'axios';
 import useAuthStore from '../store/authStore.js';
+import { getApiBaseURL, withBasePath } from '../utils/basePath.js';
 
-/** Dev: full origin from .env.development. Prod: same-origin `/api`. */
-export function getApiBaseURL() {
-  const origin = import.meta.env.VITE_API_ORIGIN;
-  if (origin) return `${String(origin).replace(/\/$/, '')}/api`;
-  return '/api';
-}
+export { getApiBaseURL };
 
 const api = axios.create({
   baseURL: getApiBaseURL(),
@@ -57,7 +53,7 @@ api.interceptors.response.use(
       } catch (e) {
         processQueue(e, null);
         logout();
-        window.location.href = '/login';
+        window.location.assign(withBasePath('login'));
         return Promise.reject(e);
       } finally {
         isRefreshing = false;
