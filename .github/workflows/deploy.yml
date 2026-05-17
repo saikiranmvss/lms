@@ -91,7 +91,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
-          MIGRATE_ON_DEPLOY: ${{ secrets.MIGRATE_ON_DEPLOY || 'false' }}
+          MIGRATE_ON_DEPLOY: ${{ secrets.MIGRATE_ON_DEPLOY || 'true' }}
           MIGRATE_FORCE: ${{ secrets.MIGRATE_FORCE || 'false' }}
           RELEASES_TO_KEEP: ${{ secrets.RELEASES_TO_KEEP || '5' }}
           SSL_EMAIL: ${{ secrets.SSL_EMAIL }}

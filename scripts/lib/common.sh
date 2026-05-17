@@ -363,11 +363,17 @@ run_migrations() {
   local release="$1"
   local migrate_flag="${MIGRATE_ON_DEPLOY:-false}"
   [[ "${migrate_flag}" == "true" ]] || { log "Skipping migrations (MIGRATE_ON_DEPLOY != true)"; return 0; }
-  if [[ "${MIGRATION_REQUIRES_FORCE:-false}" == "true" && "${MIGRATE_FORCE:-false}" != "true" ]]; then
-    log "Skipping destructive migrations (set MIGRATE_FORCE=true to run)"
+
+  local cmd="${MIGRATION_CMD:-}"
+  if [[ "${MIGRATE_FORCE:-false}" == "true" ]]; then
+    cmd="${MIGRATION_FORCE_CMD:-${MIGRATION_CMD}}"
+    log "Running forced migration: ${cmd}"
+  elif [[ "${MIGRATION_REQUIRES_FORCE:-false}" == "true" ]]; then
+    log "Skipping migrations (set MIGRATE_FORCE=true for destructive reset)"
     return 0
   fi
-  [[ -n "${MIGRATION_CMD:-}" ]] || { log "No MIGRATION_CMD configured"; return 0; }
+
+  [[ -n "${cmd}" ]] || { log "No MIGRATION_CMD configured"; return 0; }
   local migrate_dir="${release}"
   [[ -n "${API_CWD_REL:-}" ]] && migrate_dir="${release}/${API_CWD_REL}"
   sudo -u "${DEPLOY_USER}" bash -lc "
@@ -376,7 +382,7 @@ run_migrations() {
     nvm use ${NODE_VERSION}
     cd '${migrate_dir}'
     set -a && [[ -f .env ]] && source .env && set +a
-    ${MIGRATION_CMD}
+    ${cmd}
   "
   log "Migrations finished"
 }

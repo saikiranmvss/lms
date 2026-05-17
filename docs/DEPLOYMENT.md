@@ -28,8 +28,20 @@ FRONTEND_URL=http://YOUR_IP/lms/
 
 ## Deploy
 
-1. Add secrets in the **LMS** GitHub repo.
-2. Push to `main` or run **Actions → Deploy**.
+Push to `main` or run **Actions → Deploy**.
+
+Each deploy runs **`ensure-schema.js`** (default `MIGRATE_ON_DEPLOY=true`):
+
+- Creates all tables if missing
+- Seeds demo users if the database is empty
+
+## Demo logins (after first deploy)
+
+| Role | Email | Password |
+|------|--------|----------|
+| Admin | `admin@learnhub.com` | `admin123` |
+| Instructor | `instructor@learnhub.com` | `instructor123` |
+| Student | `student@learnhub.com` | `student123` |
 
 ## Verify
 
@@ -38,15 +50,6 @@ http://YOUR_IP/lms/
 http://YOUR_IP/lms/api/health
 ```
 
-## Migrations (destructive)
+## Full database reset (destructive)
 
-Default: `MIGRATE_ON_DEPLOY=false` (safe).
-
-To initialize tables **once**, set `MIGRATE_ON_DEPLOY=true` and `MIGRATE_FORCE=true`, deploy once, then remove both secrets.
-
-## Aligned with chatex/Ravyu
-
-- Artifact tarball uses shell `ARTIFACT=` before `tar` (not `GITHUB_ENV` in same step)
-- Systemd `User=${DEPLOY_USER}` (no `envsubst` bash-default bug)
-- `sync_deploy_scripts`, CI log mirroring, deploy failure log tail
-- npm install in `backend/` on server (not pnpm)
+Only if you need to wipe all LMS data: set secrets `MIGRATE_ON_DEPLOY=true` and `MIGRATE_FORCE=true`, deploy once, then remove `MIGRATE_FORCE`.
