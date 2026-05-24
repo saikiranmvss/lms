@@ -6,6 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="LearnHub - Modern Learning Management System" />
     <title>LearnHub - Learn Without Limits</title>
+    <script>
+      (function() {
+        try {
+          const uiStore = JSON.parse(localStorage.getItem('lms-ui'));
+          if (uiStore && uiStore.state && uiStore.state.darkMode) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -161,3 +161,145 @@
 .lesson-content-enter {
   animation: lesson-content-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* ==========================================
+   PREMIUM GLOBAL DARK MODE OVERRIDES
+   ========================================== */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #030712 !important; /* slate-950 */
+  color: #f1f5f9 !important; /* slate-100 */
+}
+
+/* Background overrides */
+.dark .bg-white {
+  background-color: #0f172a !important; /* slate-900 */
+}
+
+.dark .bg-slate-50 {
+  background-color: #030712 !important; /* slate-950 */
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important; /* slate-800 */
+}
+
+.dark .bg-slate-200 {
+  background-color: #334155 !important; /* slate-700 */
+}
+
+/* Border overrides */
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #1e293b !important; /* slate-800 */
+}
+
+/* Text overrides */
+.dark .text-slate-900 {
+  color: #f8fafc !important; /* slate-50 */
+}
+
+.dark .text-slate-800 {
+  color: #f1f5f9 !important; /* slate-100 */
+}
+
+.dark .text-slate-700 {
+  color: #e2e8f0 !important; /* slate-200 */
+}
+
+.dark .text-slate-600 {
+  color: #cbd5e1 !important; /* slate-300 */
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8 !important; /* slate-400 */
+}
+
+.dark .text-slate-400 {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* Specific component overrides */
+.dark nav {
+  background-color: #0f172a !important; /* slate-900 */
+  border-color: #1e293b !important;
+}
+
+.dark .card {
+  background-color: #0f172a !important; /* slate-900 */
+  border-color: #1e293b !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .input {
+  background-color: #1e293b !important; /* slate-800 */
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+.dark .input::placeholder {
+  color: #64748b !important;
+}
+
+.dark .btn-ghost {
+  color: #cbd5e1 !important;
+}
+
+.dark .btn-ghost:hover {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+.dark .btn-secondary {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+.dark .btn-secondary:hover {
+  background-color: #334155 !important;
+}
+
+/* Sidebar and menus */
+.dark .sidebar-link {
+  color: #cbd5e1 !important;
+}
+
+.dark .sidebar-link:hover {
+  background-color: #1e293b !important;
+  color: #4f46e5 !important;
+}
+
+.dark .sidebar-link.active {
+  background-color: #1e293b !important;
+  color: #8196fa !important;
+}
+
+/* Quick demo access text / dev footer card */
+.dark .border-t {
+  border-color: #1e293b !important;
+}
+
+/* CourseWatch specific player overrides */
+.dark .course-video-frame {
+  background-color: #000 !important;
+}
+
+/* Modals and popovers */
+.dark .group-hover\:opacity-100 {
+  background-color: #0f172a !important;
+  border-color: #1e293b !important;
+}
+
+.dark .group-hover\:opacity-100 a {
+  color: #e2e8f0 !important;
+}
+
+.dark .group-hover\:opacity-100 a:hover {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}

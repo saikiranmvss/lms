@@ -33,12 +33,6 @@ export default function Login() {
     }
   };
 
-  // Demo accounts
-  const demos = [
-    { label: 'Admin', email: 'admin@learnhub.com', password: 'admin123' },
-    { label: 'Instructor', email: 'instructor@learnhub.com', password: 'instructor123' },
-    { label: 'Student', email: 'student@learnhub.com', password: 'student123' },
-  ];
 
   return (
     <div className="min-h-screen flex">
@@ -101,17 +95,13 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Demo Accounts */}
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <p className="text-xs text-slate-500 text-center mb-3">Quick demo access</p>
-            <div className="flex gap-2">
-              {demos.map(({ label, email: e, password: p }) => (
-                <button key={label} onClick={() => { setEmail(e); setPassword(p); }}
-                  className="flex-1 text-xs border border-slate-200 rounded-lg py-2 px-3 text-slate-600 hover:bg-slate-100 hover:border-primary-200 transition-all">
-                  {label}
-                </button>
-              ))}
-            </div>
+          {/* Developer/Admin Note */}
+          <div className="mt-8 pt-6 border-t border-slate-200 text-center">
+            <p className="text-xs text-slate-500">
+              Need admin access? Sign in manually with{' '}
+              <span className="font-semibold text-slate-700">admin@learnhub.com</span> (password:{' '}
+              <span className="font-semibold text-slate-700">admin123</span>)
+            </p>
           </div>
         </div>
       </div>
