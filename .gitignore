@@ -135,5 +135,19 @@ cython_debug/
 # PyCharm
 .idea/
 
-frontend/node_modules/*
-backend/node_modules/*
+# Node / NPM
+node_modules/
+**/node_modules/
+package-lock.json
+**/package-lock.json
+dist/
+**/dist/
+
+# Local Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.local
