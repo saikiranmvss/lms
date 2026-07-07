@@ -87,9 +87,17 @@ provision_piston_runner() {
     log "Docker already installed."
   fi
 
+  if docker ps -a --format '{{.Names}}' | grep -Eq '^piston$'; then
+    IS_PRIVILEGED=$(docker inspect piston --format '{{.HostConfig.Privileged}}' 2>/dev/null || echo "false")
+    if [[ "$IS_PRIVILEGED" != "true" ]]; then
+      log "Existing Piston container is not privileged. Recreating..."
+      docker rm -f piston || true
+    fi
+  fi
+
   if ! docker ps -a --format '{{.Names}}' | grep -Eq '^piston$'; then
     log "Spinning up Piston compiler Docker container on port 2000..."
-    docker run -d -p 2000:2000 --name piston --restart always ghcr.io/engineer-man/piston
+    docker run --privileged -d -p 2000:2000 -v piston_data:/piston --name piston --restart always ghcr.io/engineer-man/piston
     log "Piston container successfully started."
   else
     if ! docker ps --format '{{.Names}}' | grep -Eq '^piston$'; then

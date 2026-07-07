@@ -117,7 +117,7 @@ export async function runCodeProxy(req, res) {
       return sendError(res, 400, 'Language and files are required.');
     }
 
-    const pistonUrl = process.env.PISTON_URL || 'http://localhost:2000';
+    const pistonUrl = process.env.PISTON_URL || 'http://127.0.0.1:2000';
 
     const response = await fetch(`${pistonUrl}/api/v2/execute`, {
       method: 'POST',
