@@ -69,6 +69,9 @@ app.use('/api/ai', aiRoutes);
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, message: `Invalid JSON payload: ${err.message}` });
+  }
   console.error(err.stack);
   res.status(500).json({ success: false, message: 'Internal server error' });
 });
