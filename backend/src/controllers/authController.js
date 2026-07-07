@@ -91,7 +91,7 @@ export const logout = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, role, avatar, bio, is_verified, is_instructor_approved, created_at FROM users WHERE id = $1',
+      'SELECT id, name, email, role, avatar, bio, is_verified, is_instructor_approved, daily_streak, experience_points, badges, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     sendSuccess(res, result.rows[0]);

@@ -16,6 +16,7 @@ import About from './pages/public/About.jsx';
 import Contact from './pages/public/Contact.jsx';
 import FAQ from './pages/public/FAQ.jsx';
 import Pricing from './pages/public/Pricing.jsx';
+import CertificateVerify from './pages/public/CertificateVerify.jsx';
 
 // Auth Pages
 import Login from './pages/auth/Login.jsx';
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/verify/certificate/:id" element={<CertificateVerify />} />
         </Route>
 
         {/* Auth Routes */}

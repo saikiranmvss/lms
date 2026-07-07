@@ -36,10 +36,57 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Welcome back, {user?.name?.split(' ')[0]}!</h1>
-        <p className="text-slate-500 mt-1">Keep learning and reach your goals.</p>
+      {/* Welcome & Gamification */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+        <div className="md:col-span-1">
+          <h1 className="text-2xl font-bold text-slate-900">Welcome back, {user?.name?.split(' ')[0]}!</h1>
+          <p className="text-slate-500 mt-1">Keep learning and reach your goals.</p>
+        </div>
+        
+        {/* Gamification widgets */}
+        <div className="md:col-span-2 grid grid-cols-3 gap-4">
+          <div className="card p-4 flex items-center gap-3 bg-gradient-to-br from-amber-50 to-white border-amber-200">
+            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 flex-shrink-0">
+              <span className="text-lg">🔥</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Streak</p>
+              <h3 className="text-sm font-extrabold text-slate-800">{user?.daily_streak || 0} {user?.daily_streak === 1 ? 'Day' : 'Days'}</h3>
+            </div>
+          </div>
+
+          <div className="card p-4 flex items-center gap-3 bg-gradient-to-br from-indigo-50 to-white border-indigo-200">
+            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 flex-shrink-0">
+              <span className="text-lg">✨</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">XP Points</p>
+              <h3 className="text-sm font-extrabold text-slate-800">{user?.experience_points || 0} XP</h3>
+            </div>
+          </div>
+
+          <div className="card p-4 flex items-center gap-3 bg-gradient-to-br from-purple-50 to-white border-purple-200">
+            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600 flex-shrink-0">
+              <span className="text-lg">🏆</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Badges</p>
+              <h3 className="text-sm font-extrabold text-slate-800 truncate">
+                {(() => {
+                  let badgesArray = [];
+                  try {
+                    badgesArray = typeof user?.badges === 'string' ? JSON.parse(user.badges) : (user?.badges || []);
+                  } catch {
+                    badgesArray = [];
+                  }
+                  return badgesArray.length > 0 
+                    ? `${badgesArray.length} Unlocked`
+                    : '0 Earned';
+                })()}
+              </h3>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats */}

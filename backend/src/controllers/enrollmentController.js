@@ -62,15 +62,87 @@ export const updateProgress = async (req, res) => {
     `, [req.user.id, lessonId, courseId, isCompleted ? 1 : 0, watchTimeSeconds || 0, isCompleted ? new Date() : null]);
 
     // Update enrollment completion percentage
-    const totalLessons = await pool.query("SELECT COUNT(*) FROM lessons WHERE course_id = $1 AND is_published = true AND type != 'quiz'", [courseId]);
-    const completedLessons = await pool.query("SELECT COUNT(*) FROM progress_tracking WHERE student_id = $1 AND course_id = $2 AND is_completed = true", [req.user.id, courseId]);
-    const percentage = totalLessons.rows[0].count > 0
-      ? Math.round((completedLessons.rows[0].count / totalLessons.rows[0].count) * 100) : 0;
+    const totalLessons = await pool.query("SELECT COUNT(*) AS count FROM lessons WHERE course_id = $1 AND is_published = 1", [courseId]);
+    const completedLessons = await pool.query("SELECT COUNT(*) AS count FROM progress_tracking WHERE student_id = $1 AND course_id = $2 AND is_completed = 1", [req.user.id, courseId]);
+    const total = Number(totalLessons.rows[0]?.count || 0);
+    const completed = Number(completedLessons.rows[0]?.count || 0);
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     await pool.query(
       'UPDATE enrollments SET completion_percentage = $1, last_accessed_at = NOW(), completed_at = $2 WHERE student_id = $3 AND course_id = $4',
       [percentage, percentage === 100 ? new Date() : null, req.user.id, courseId]
     );
+
+    // ─── GAMIFICATION UPDATE ───
+    let xpEarned = 0;
+    let streakUpdated = false;
+    let newStreak = 0;
+    let unlockedBadge = null;
+
+    if (isCompleted) {
+      xpEarned = 10; // 10 XP for each completed lesson
+
+      // 1. Fetch user's current streak and active date details
+      const { rows: users } = await pool.query(
+        'SELECT daily_streak, last_active_date, experience_points, badges FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      if (users[0]) {
+        const u = users[0];
+        const todayStr = new Date().toISOString().split('T')[0];
+        newStreak = u.daily_streak || 0;
+
+        if (!u.last_active_date) {
+          newStreak = 1;
+          streakUpdated = true;
+        } else {
+          const lastActiveStr = new Date(u.last_active_date).toISOString().split('T')[0];
+          const diffTime = Math.abs(new Date(todayStr) - new Date(lastActiveStr));
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays === 1) {
+            newStreak += 1;
+            streakUpdated = true;
+          } else if (diffDays > 1) {
+            newStreak = 1;
+            streakUpdated = true;
+          }
+        }
+
+        const totalXp = (u.experience_points || 0) + xpEarned;
+        let badgesArray = [];
+        try {
+          badgesArray = typeof u.badges === 'string' ? JSON.parse(u.badges) : (u.badges || []);
+        } catch {
+          badgesArray = [];
+        }
+
+        // Check for new badges
+        if (percentage === 100 && !badgesArray.includes('course_graduate')) {
+          badgesArray.push('course_graduate');
+          unlockedBadge = 'Course Graduate';
+        }
+        if (newStreak >= 7 && !badgesArray.includes('super_learner')) {
+          badgesArray.push('super_learner');
+          unlockedBadge = 'Super Learner';
+        }
+        if (totalXp >= 100 && !badgesArray.includes('centurion')) {
+          badgesArray.push('centurion');
+          unlockedBadge = 'Centurion';
+        }
+
+        // Save back to DB
+        await pool.query(
+          `UPDATE users 
+           SET experience_points = $1, 
+               daily_streak = $2, 
+               last_active_date = NOW(), 
+               badges = $3 
+           WHERE id = $4`,
+          [totalXp, newStreak, JSON.stringify(badgesArray), req.user.id]
+        );
+      }
+    }
 
     // Issue certificate if 100%
     if (percentage === 100) {
@@ -80,7 +152,13 @@ export const updateProgress = async (req, res) => {
       );
     }
 
-    sendSuccess(res, { completion_percentage: percentage });
+    sendSuccess(res, { 
+      completion_percentage: percentage,
+      xpEarned,
+      streakUpdated,
+      newStreak,
+      unlockedBadge
+    });
   } catch (err) {
     sendError(res, 500, 'Failed to update progress', err.message);
   }

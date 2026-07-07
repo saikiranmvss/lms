@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Award, Download, ExternalLink } from 'lucide-react';
 import { certificateService } from '../../services/courseService.js';
 import { formatDate } from '../../utils/helpers.js';
@@ -42,10 +43,22 @@ export default function Certificates() {
                 <p>Issued on: <strong>{formatDate(cert.issued_at)}</strong></p>
               </div>
               <div className="flex gap-3 mt-5">
-                <button className="btn-secondary text-sm flex items-center gap-2 flex-1 justify-center">
-                  <Download className="w-4 h-4" /> Download
-                </button>
-                <button className="btn-ghost text-sm flex items-center gap-2">
+                <Link
+                  to={`/verify/certificate/${cert.id}`}
+                  className="btn-secondary text-sm flex items-center gap-2 flex-1 justify-center"
+                >
+                  <Download className="w-4 h-4" /> View / Print
+                </Link>
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/verify/certificate/${cert.id}`;
+                    navigator.clipboard.writeText(url);
+                    import('react-hot-toast').then(({ default: toast }) => {
+                      toast.success('Verification link copied to clipboard!');
+                    });
+                  }}
+                  className="btn-ghost text-sm flex items-center gap-2"
+                >
                   <ExternalLink className="w-4 h-4" /> Share
                 </button>
               </div>

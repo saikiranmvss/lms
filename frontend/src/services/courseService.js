@@ -131,8 +131,12 @@ export const paymentService = {
   /** Notify backend that payment failed (Razorpay payment.failed event) */
   markFailed: (razorpay_order_id, error_description) =>
     api.post('/payments/failed', { razorpay_order_id, error_description }),
-
   /** Student's own transaction history */
   getMyTransactions: () => api.get('/payments/my'),
+};
+
+export const aiService = {
+  chat: (courseId, lessonId, messages) =>
+    api.post('/ai/chat', { courseId, lessonId, messages }),
 };
 

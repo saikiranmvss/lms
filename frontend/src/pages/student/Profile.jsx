@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { User, Mail, Lock, Camera, Save } from 'lucide-react';
 import { authService } from '../../services/courseService.js';
 import useAuthStore from '../../store/authStore.js';
@@ -88,6 +89,47 @@ export default function StudentProfile() {
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Bio</label>
               <textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={3} className="input resize-none" placeholder="Tell us about yourself..." />
             </div>
+
+            {/* Badges showcase */}
+            <div className="border-t border-slate-100 pt-6 mt-6">
+              <h3 className="text-sm font-semibold text-slate-900 mb-3">Earned Badges</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { key: 'course_graduate', label: 'Course Graduate', icon: '🎓', desc: 'Completed any course 100%' },
+                  { key: 'super_learner', label: 'Super Learner', icon: '🔥', desc: '7+ Days learning streak' },
+                  { key: 'centurion', label: 'Centurion', icon: '✨', desc: '100+ Total learning XP' },
+                ].map((badge) => {
+                  let badgesArray = [];
+                  try {
+                    badgesArray = typeof user?.badges === 'string' ? JSON.parse(user.badges) : (user?.badges || []);
+                  } catch {
+                    badgesArray = [];
+                  }
+                  const unlocked = badgesArray.includes(badge.key);
+
+                  return (
+                    <div
+                      key={badge.key}
+                      className={clsx(
+                        'flex items-center gap-3 p-3 rounded-xl border text-left transition-all',
+                        unlocked 
+                          ? 'bg-amber-50/50 border-amber-200/80 text-slate-800'
+                          : 'bg-slate-50 border-slate-150 text-slate-400 opacity-60'
+                      )}
+                    >
+                      <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0', unlocked ? 'bg-amber-100' : 'bg-slate-200')}>
+                        {badge.icon}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold truncate">{badge.label}</h4>
+                        <p className="text-[10px] text-slate-500 truncate" title={badge.desc}>{badge.desc}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <button type="submit" disabled={profileMutation.isPending} className="btn-primary flex items-center gap-2">
               <Save className="w-4 h-4" />
               {profileMutation.isPending ? 'Saving...' : 'Save Changes'}
