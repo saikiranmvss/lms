@@ -89,7 +89,7 @@ provision_piston_runner() {
 
   if ! docker ps -a --format '{{.Names}}' | grep -Eq '^piston$'; then
     log "Spinning up Piston compiler Docker container on port 2000..."
-    docker run -d -p 2000:2000 --name piston --restart always engineer-man/piston
+    docker run -d -p 2000:2000 --name piston --restart always ghcr.io/engineer-man/piston
     log "Piston container successfully started."
   else
     if ! docker ps --format '{{.Names}}' | grep -Eq '^piston$'; then
