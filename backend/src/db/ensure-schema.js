@@ -20,9 +20,9 @@ async function usersTableExists(conn) {
   return rows.length > 0;
 }
 
-async function runSeed() {
+async function runScript(scriptPath) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['src/db/seed.js'], {
+    const child = spawn(process.execPath, [scriptPath], {
       cwd: path.join(__dirname, '../..'),
       stdio: 'inherit',
       env: process.env,
@@ -30,7 +30,7 @@ async function runSeed() {
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`seed.js exited with code ${code}`));
+      else reject(new Error(`${scriptPath} exited with code ${code}`));
     });
   });
 }
@@ -66,9 +66,14 @@ async function main() {
   const [[{ c }]] = await conn.query('SELECT COUNT(*) AS c FROM users');
   await conn.end();
 
+  // Run migrations to apply new schema adjustments (payments, gamification, etc.)
+  console.log('Applying database schema migrations...');
+  await runScript('src/db/migrate-payments.js');
+  await runScript('src/db/migrate-gamification.js');
+
   if (Number(c) === 0) {
     console.log('No users found — running seed.js');
-    await runSeed();
+    await runScript('src/db/seed.js');
   } else {
     console.log(`Database has ${c} user(s) — skipping seed.`);
   }

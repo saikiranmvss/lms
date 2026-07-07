@@ -59,9 +59,46 @@ provision_global() {
   systemctl enable nginx mysql postgresql fail2ban
   systemctl start nginx mysql postgresql || true
 
+
   mkdir -p /var/www /etc/nginx/cloudteor-apps
   touch "${PROVISION_MARKER}"
   log "Global provisioning complete"
+}
+
+provision_piston_runner() {
+  log "=== Provision Piston/Docker compiler runner ==="
+  if ! command -v docker &>/dev/null; then
+    log "Docker not found — installing Docker CE..."
+    apt-get update -qq
+    apt-get install -y -qq apt-transport-https ca-certificates curl gnupg lsb-release
+    
+    mkdir -p /etc/apt/keyrings
+    rm -f /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io
+    log "Docker installed successfully."
+  else
+    log "Docker already installed."
+  fi
+
+  if ! docker ps -a --format '{{.Names}}' | grep -Eq '^piston$'; then
+    log "Spinning up Piston compiler Docker container on port 2000..."
+    docker run -d -p 2000:2000 --name piston --restart always engineer-man/piston
+    log "Piston container successfully started."
+  else
+    if ! docker ps --format '{{.Names}}' | grep -Eq '^piston$'; then
+      log "Starting stopped Piston compiler container..."
+      docker start piston
+    else
+      log "Piston compiler container is already running."
+    fi
+  fi
 }
 
 provision_app_dirs() {
@@ -98,6 +135,7 @@ install_deploy_scripts() {
 
 main() {
   provision_global
+  provision_piston_runner
   provision_app_dirs
   provision_database
   render_nginx_config

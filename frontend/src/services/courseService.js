@@ -138,5 +138,7 @@ export const paymentService = {
 export const aiService = {
   chat: (courseId, lessonId, messages) =>
     api.post('/ai/chat', { courseId, lessonId, messages }),
+  runCode: (language, version, files) =>
+    api.post('/ai/run-code', { language, version, files }),
 };
 

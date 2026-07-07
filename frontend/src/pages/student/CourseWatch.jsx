@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, CheckCircle, Circle, ChevronDown, ChevronRight,
-  MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle, Video, BookOpen, Loader2, Sparkles,
+  MessageSquare, FileText, Download, StickyNote, ArrowLeft, HelpCircle, Video, BookOpen, Loader2, Sparkles, Code,
 } from 'lucide-react';
 import { courseService, enrollmentService, discussionService, noteService, aiService, authService } from '../../services/courseService.js';
 import { formatDuration, formatDate, getInitials, timeAgo } from '../../utils/helpers.js';
@@ -31,6 +31,79 @@ export default function CourseWatch() {
   ]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Coding Playground States
+  const [code, setCode] = useState('// Write your JavaScript code here\n\nfunction main() {\n  console.log("Hello from LearnHub Sandbox!");\n}\n\nmain();');
+  const [codeLanguage, setCodeLanguage] = useState('javascript');
+  const [consoleLogs, setConsoleLogs] = useState([]);
+
+  // Reset/update code editor when current lesson changes
+  useEffect(() => {
+    if (currentLesson?.type === 'coding') {
+      setCode(currentLesson.content || '// Write your code here...\n');
+      setConsoleLogs([]);
+    }
+  }, [currentLesson?.id]);
+
+  const runCode = async () => {
+    setConsoleLogs(['Running code...']);
+
+    if (codeLanguage === 'html') {
+      setConsoleLogs(['Preview refreshed! Scroll down to see the Live HTML Preview.']);
+      return;
+    }
+
+    const langMap = {
+      javascript: { lang: 'javascript', version: '18.15.0', file: 'index.js' },
+      typescript: { lang: 'typescript', version: '5.0.3', file: 'index.ts' },
+      python: { lang: 'python', version: '3.10.0', file: 'index.py' },
+      php: { lang: 'php', version: '8.2.3', file: 'index.php' },
+      cpp: { lang: 'c++', version: '10.2.0', file: 'main.cpp' },
+      c: { lang: 'c', version: '10.2.0', file: 'main.c' },
+      csharp: { lang: 'csharp', version: '6.12.0', file: 'Main.cs' },
+      java: { lang: 'java', version: '15.0.2', file: 'Main.java' },
+      kotlin: { lang: 'kotlin', version: '1.8.20', file: 'Main.kt' },
+      swift: { lang: 'swift', version: '5.8.0', file: 'main.swift' },
+      go: { lang: 'go', version: '1.16.2', file: 'main.go' },
+      rust: { lang: 'rust', version: '1.68.2', file: 'main.rs' },
+      scala: { lang: 'scala', version: '3.2.2', file: 'Main.scala' },
+      haskell: { lang: 'haskell', version: '9.4.4', file: 'main.hs' },
+      bash: { lang: 'bash', version: '5.2.15', file: 'script.sh' },
+      sqlite3: { lang: 'sqlite3', version: '3.36.0', file: 'query.sql' },
+      r: { lang: 'r', version: '4.2.2', file: 'script.r' },
+      julia: { lang: 'julia', version: '1.9.0', file: 'script.jl' },
+      dart: { lang: 'dart', version: '2.19.6', file: 'main.dart' },
+      perl: { lang: 'perl', version: '5.36.0', file: 'script.pl' },
+      ruby: { lang: 'ruby', version: '3.2.2', file: 'index.rb' }
+    };
+
+    const target = langMap[codeLanguage];
+    if (!target) {
+      setConsoleLogs(['Unsupported language selected.']);
+      return;
+    }
+
+    try {
+      const res = await aiService.runCode(target.lang, target.version, [
+        { name: target.file, content: code }
+      ]);
+      const resData = res.data.data;
+      const output = resData.run?.output || '';
+      const stderr = resData.run?.stderr || '';
+
+      const logs = [];
+      if (stderr) {
+        logs.push(`Error Output:\n${stderr}`);
+      } else {
+        logs.push(output || 'Execution complete (no console output).');
+      }
+      setConsoleLogs(logs);
+    } catch (err) {
+      setConsoleLogs([
+        `Execution failed: ${err.response?.data?.message || err.message || 'Make sure the self-hosted Piston Docker container is running.'}`
+      ]);
+    }
+  };
 
   const handleAiSubmit = async (e) => {
     e.preventDefault();
@@ -166,6 +239,7 @@ export default function CourseWatch() {
   const { course, sections } = courseData;
   const isQuizLesson = currentLesson?.type === 'quiz';
   const isTextLesson = currentLesson?.type === 'text';
+  const isCodingLesson = currentLesson?.type === 'coding';
 
   const fullLesson = lessonData?.lesson || currentLesson;
   const videoUrl = fullLesson?.video_url || currentLesson?.video_url;
@@ -355,7 +429,7 @@ export default function CourseWatch() {
             ref={lessonContentScrollRef}
             className="lesson-watch-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[#f4f6fb] [overflow-anchor:none]"
           >
-            {!isTextLesson && (
+            {!isTextLesson && !isCodingLesson && (
               <div className="relative z-10 border-b border-white/[0.06] bg-gradient-to-b from-[#0a0f1c] via-[#070b14] to-[#060a12]">
                 <div className="mx-auto max-w-5xl px-4 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
                   <div className="mb-6">
@@ -402,6 +476,125 @@ export default function CourseWatch() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {isCodingLesson && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 border-b border-slate-200 bg-white min-h-[500px]">
+                {/* Left Pane: Instructions */}
+                <div className="p-6 sm:p-8 border-r border-slate-200 overflow-y-auto max-h-[550px]">
+                  <div className="flex items-start gap-4 mb-5">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-50 ring-1 ring-amber-100">
+                      <Code className="h-6 w-6 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Coding Practice</p>
+                      <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{currentLesson?.title}</h1>
+                    </div>
+                  </div>
+                  <div className="prose prose-slate max-w-none text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                    {currentLesson?.description || 'Follow the instructions on the screen to solve this coding challenge.'}
+                  </div>
+                </div>
+
+                {/* Right Pane: Coding Sandbox */}
+                <div className="flex flex-col bg-slate-900 text-slate-100 p-6 space-y-4 max-h-[550px] overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span className="text-xs text-slate-400 font-mono ml-2">sandbox_workspace.js</span>
+                    </div>
+                    <select
+                      value={codeLanguage}
+                      onChange={(e) => setCodeLanguage(e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-slate-300 px-2 py-1 outline-none cursor-pointer"
+                    >
+                      <option value="javascript">JavaScript (ES6)</option>
+                      <option value="typescript">TypeScript 5</option>
+                      <option value="html">HTML / CSS (Live Preview)</option>
+                      <option value="python">Python 3</option>
+                      <option value="php">PHP 8</option>
+                      <option value="ruby">Ruby 3</option>
+                      <option value="cpp">C++ (GCC)</option>
+                      <option value="c">C (GCC)</option>
+                      <option value="csharp">C# (Mono)</option>
+                      <option value="java">Java 15</option>
+                      <option value="kotlin">Kotlin 1.8</option>
+                      <option value="swift">Swift 5.8</option>
+                      <option value="go">Go (Golang)</option>
+                      <option value="rust">Rust</option>
+                      <option value="scala">Scala 3</option>
+                      <option value="haskell">Haskell 9</option>
+                      <option value="r">R Language</option>
+                      <option value="julia">Julia</option>
+                      <option value="dart">Dart</option>
+                      <option value="perl">Perl</option>
+                      <option value="sqlite3">SQL (SQLite)</option>
+                      <option value="bash">Bash / Shell</option>
+                    </select>
+                  </div>
+
+                  {/* Code Area */}
+                  <div className="flex-1 min-h-[220px] relative rounded-xl border border-slate-700 bg-slate-950 overflow-hidden flex">
+                    <div className="w-10 bg-slate-900 border-r border-slate-800 flex flex-col items-center py-3 text-xs font-mono text-slate-500 select-none">
+                      {Array.from({ length: 15 }).map((_, i) => (
+                        <div key={i} className="h-5 flex items-center">{i + 1}</div>
+                      ))}
+                    </div>
+                    <textarea
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      className="flex-1 bg-transparent p-3 outline-none resize-none font-mono text-sm leading-5 text-indigo-200"
+                      spellCheck="false"
+                    />
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={runCode}
+                      className="btn-primary bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold border-0 text-xs py-2 px-4 flex items-center gap-1.5"
+                    >
+                      Run Code ⚡
+                    </button>
+                    <button
+                      onClick={() => setCode(currentLesson?.content || '')}
+                      className="btn-secondary bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 text-xs py-2 px-3"
+                    >
+                      Reset 🔄
+                    </button>
+                  </div>
+
+                  {/* Console logs / Live Preview */}
+                  {codeLanguage === 'html' ? (
+                    <div className="h-40 rounded-xl border border-slate-800 bg-white overflow-hidden flex flex-col">
+                      <div className="bg-slate-950 text-slate-400 px-3 py-1 text-[10px] uppercase font-bold tracking-wider select-none">
+                        Live Preview Output:
+                      </div>
+                      <iframe
+                        srcDoc={code}
+                        className="flex-1 w-full bg-white outline-none border-0"
+                        title="HTML Live Sandbox Preview"
+                        sandbox="allow-scripts"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-28 rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs overflow-y-auto space-y-1 select-text">
+                      <p className="text-slate-500 border-b border-slate-900 pb-1 mb-1 font-bold">Console Output:</p>
+                      {consoleLogs.length === 0 ? (
+                        <p className="text-slate-600 italic">No output. Click "Run Code" to compile and run.</p>
+                      ) : (
+                        consoleLogs.map((log, idx) => (
+                          <p key={idx} className={clsx(
+                            log.startsWith('Error') || log.startsWith('Error Output') ? 'text-red-400' : 'text-emerald-400'
+                          )}>{log}</p>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

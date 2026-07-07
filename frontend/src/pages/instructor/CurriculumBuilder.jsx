@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, GripVertical, ChevronDown, ChevronRight,
   Video, FileText, HelpCircle, ArrowLeft, Settings, ListChecks,
   CheckSquare, ToggleLeft, AlignLeft, Check, X, Clock, Target,
-  RefreshCw, BookOpen, Sliders, UploadCloud, Link2, AlertCircle
+  RefreshCw, BookOpen, Sliders, UploadCloud, Link2, AlertCircle, Code
 } from 'lucide-react';
 import { courseService, quizService, uploadService } from '../../services/courseService.js';
 import { PageLoader } from '../../components/common/LoadingSpinner.jsx';
@@ -21,8 +21,8 @@ const QUESTION_TYPES = [
   { value: 'range_slider', label: 'Range Slider', icon: Sliders, desc: 'Drag a slider to select a value' },
 ];
 
-const lessonTypeIcons = { video: Video, text: FileText, quiz: HelpCircle };
-const lessonTypeColors = { video: 'text-blue-500', text: 'text-green-500', quiz: 'text-purple-500' };
+const lessonTypeIcons = { video: Video, text: FileText, quiz: HelpCircle, coding: Code };
+const lessonTypeColors = { video: 'text-blue-500', text: 'text-green-500', quiz: 'text-purple-500', coding: 'text-amber-500' };
 
 const emptySliderConfig = () => ({
   min: 0, max: 100, defaultValue: 50, step: 1,
@@ -754,6 +754,7 @@ export default function CurriculumBuilder() {
                           'bg-blue-50 text-blue-600': lesson.type === 'video',
                           'bg-green-50 text-green-700': lesson.type === 'text',
                           'bg-purple-50 text-purple-700': lesson.type === 'quiz',
+                          'bg-amber-50 text-amber-700': lesson.type === 'coding',
                         })}>{lesson.type}</span>
                         {lesson.is_preview && <span className="badge bg-sky-50 text-sky-600 text-xs">Preview</span>}
                         {lesson.type === 'quiz' && (
@@ -812,11 +813,12 @@ export default function CurriculumBuilder() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Lesson Type</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {[
                 { value: 'video', label: 'Video', icon: Video, color: 'text-blue-500', bg: 'bg-blue-50' },
                 { value: 'text', label: 'Article', icon: FileText, color: 'text-green-500', bg: 'bg-green-50' },
                 { value: 'quiz', label: 'Quiz', icon: HelpCircle, color: 'text-purple-500', bg: 'bg-purple-50' },
+                { value: 'coding', label: 'Coding', icon: Code, color: 'text-amber-500', bg: 'bg-amber-50' },
               ].map(({ value, label, icon: Icon, color, bg }) => (
                 <button key={value} type="button" onClick={() => setLessonForm({ ...lessonForm, type: value })}
                   className={clsx('flex flex-col items-center gap-2 py-3 px-2 rounded-xl border-2 transition-all',
@@ -903,11 +905,13 @@ export default function CurriculumBuilder() {
               )}
             </div>
           )}
-          {lessonForm.type === 'text' && (
+          {(lessonForm.type === 'text' || lessonForm.type === 'coding') && (
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Article Content</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                {lessonForm.type === 'coding' ? 'Coding Instructions & Starter Code' : 'Article Content'}
+              </label>
               <textarea value={lessonForm.content} onChange={e => setLessonForm({ ...lessonForm, content: e.target.value })}
-                className="input resize-none" rows={5} />
+                className="input font-mono text-sm" rows={8} placeholder={lessonForm.type === 'coding' ? "Provide instructions for the student, e.g.:\n\nWrite a function sum(a,b) that returns the sum.\n\n```javascript\nfunction sum(a, b) {\n  // write code here\n}\n```" : ""} />
             </div>
           )}
           {lessonForm.type === 'quiz' && (
@@ -937,7 +941,7 @@ export default function CurriculumBuilder() {
             <button onClick={() => setLessonModal({ open: false, sectionId: null })} className="btn-secondary">Cancel</button>
             <button onClick={handleLessonSubmit} disabled={createLessonMutation.isPending} className="btn-primary flex items-center gap-2">
               {createLessonMutation.isPending ? <><RefreshCw className="w-4 h-4 animate-spin" /> Creating...</> :
-                `Add ${lessonForm.type === 'quiz' ? 'Quiz' : lessonForm.type === 'text' ? 'Article' : 'Video'} Lesson`}
+                `Add ${lessonForm.type === 'quiz' ? 'Quiz' : lessonForm.type === 'text' ? 'Article' : lessonForm.type === 'coding' ? 'Coding' : 'Video'} Lesson`}
             </button>
           </div>
         </div>

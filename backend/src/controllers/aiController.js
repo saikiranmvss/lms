@@ -104,3 +104,43 @@ Your goal:
     return sendError(res, 500, 'AI Tutor service encountered an error.', err.message);
   }
 }
+
+/**
+ * POST /api/ai/run-code
+ * Proxies code execution to the self-hosted Piston Docker container
+ */
+export async function runCodeProxy(req, res) {
+  try {
+    const { language, version, files } = req.body;
+
+    if (!language || !files) {
+      return sendError(res, 400, 'Language and files are required.');
+    }
+
+    const pistonUrl = process.env.PISTON_URL || 'http://localhost:2000';
+
+    const response = await fetch(`${pistonUrl}/api/v2/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language, version, files })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Piston Local Error response:', errText);
+      throw new Error(`Piston local instance responded with status ${response.status}`);
+    }
+
+    const resData = await response.json();
+    return sendSuccess(res, resData);
+  } catch (err) {
+    console.error('Piston proxy error:', err);
+    return sendError(
+      res,
+      500,
+      'Failed to execute code. Ensure the self-hosted Piston Docker container is running.',
+      err.message
+    );
+  }
+}
+
