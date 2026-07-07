@@ -81,7 +81,7 @@ main() {
     source \"\${NVM_DIR}/nvm.sh\"
     nvm use ${NODE_VERSION}
     cd '${release_dir}'
-    node scripts/install_runtimes.js
+    node '${APP_HOME}/scripts/install_runtimes.js'
   " || log "WARN: Piston runtimes installation failed."
 
   health_check
