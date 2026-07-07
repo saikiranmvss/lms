@@ -95,14 +95,8 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Developer/Admin Note */}
-          <div className="mt-8 pt-6 border-t border-slate-200 text-center">
-            <p className="text-xs text-slate-500">
-              Need admin access? Sign in manually with{' '}
-              <span className="font-semibold text-slate-700">admin@learnhub.com</span> (password:{' '}
-              <span className="font-semibold text-slate-700">admin123</span>)
-            </p>
-          </div>
+
+
         </div>
       </div>
     </div>

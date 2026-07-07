@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Play, Clock, Users, Star, Award, Globe, CheckCircle, ChevronDown, ChevronUp, Heart, BookOpen, Lock } from 'lucide-react';
-import { courseService, enrollmentService, wishlistService } from '../../services/courseService.js';
+import { courseService, enrollmentService, wishlistService, paymentService } from '../../services/courseService.js';
 import { formatPrice, formatDuration, formatNumber, getLevelBadge, formatDate, getInitials } from '../../utils/helpers.js';
 import { PageLoader } from '../../components/common/LoadingSpinner.jsx';
 import { StarDisplay } from '../../components/common/StarRating.jsx';
@@ -10,12 +10,25 @@ import useAuthStore from '../../store/authStore.js';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
+/** Dynamically load the Razorpay checkout script */
+function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export default function CourseDetail() {
   const { slug } = useParams();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [openSections, setOpenSections] = useState([0]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['course', slug],
@@ -38,10 +51,94 @@ export default function CourseDetail() {
     onError: () => toast.error('Failed to add to wishlist'),
   });
 
+  const handleRazorpayPayment = async () => {
+    const loaded = await loadRazorpay();
+    if (!loaded) {
+      toast.error('Payment gateway failed to load. Please check your connection.');
+      return;
+    }
+
+    const course = data.course;
+    const price = Number(course.discount_price || course.price);
+    const amountInPaise = Math.round(price * 100); // price stored in INR
+
+    if (amountInPaise < 100) {
+      // Treat as free
+      enrollMutation.mutate();
+      return;
+    }
+
+    setPaymentLoading(true);
+    let orderData;
+    try {
+      const res = await paymentService.createOrder(
+        amountInPaise,
+        'INR',
+        `course_${course.id}_${Date.now()}`
+      );
+      orderData = res.data;
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not initiate payment. Try again.');
+      setPaymentLoading(false);
+      return;
+    }
+
+    const options = {
+      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: 'LearnHub',
+      description: course.title,
+      image: course.thumbnail || undefined,
+      order_id: orderData.order_id,
+      handler: async (response) => {
+        try {
+          await paymentService.verifyPayment({
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+          });
+          toast.success('Payment successful! Enrolling you...');
+          enrollMutation.mutate();
+        } catch {
+          toast.error('Payment verification failed. Contact support if amount was deducted.');
+        } finally {
+          setPaymentLoading(false);
+        }
+      },
+      prefill: {
+        name: user?.name || '',
+        email: user?.email || '',
+      },
+      theme: { color: '#4f46e5' },
+      modal: {
+        ondismiss: () => {
+          toast('Payment cancelled.', { icon: 'ℹ️' });
+          setPaymentLoading(false);
+        },
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', (response) => {
+      toast.error(`Payment failed: ${response.error.description}`);
+      setPaymentLoading(false);
+    });
+    rzp.open();
+  };
+
   const handleEnroll = () => {
     if (!isAuthenticated) return navigate('/login');
     if (data.isEnrolled) return navigate(`/learn/${slug}`);
-    enrollMutation.mutate();
+
+    const price = Number(data.course.discount_price || data.course.price);
+    if (price === 0) {
+      // Free course — enroll directly
+      enrollMutation.mutate();
+    } else {
+      // Paid course — go through Razorpay
+      handleRazorpayPayment();
+    }
   };
 
   if (isLoading) return <PageLoader />;
@@ -52,6 +149,15 @@ export default function CourseDetail() {
   const price = course.discount_price || course.price;
 
   const toggleSection = (i) => setOpenSections((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]);
+
+  const isEnrolling = enrollMutation.isPending || paymentLoading;
+  const enrollBtnLabel = isEnrolled
+    ? 'Continue Learning'
+    : isEnrolling
+      ? 'Processing...'
+      : price === 0 || price === '0'
+        ? 'Enroll Free'
+        : 'Buy Now';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -201,9 +307,12 @@ export default function CourseDetail() {
               )}
             </div>
 
-            <button onClick={handleEnroll} disabled={enrollMutation.isPending}
-              className="btn-primary w-full text-center mb-3 text-base py-3">
-              {isEnrolled ? 'Continue Learning' : enrollMutation.isPending ? 'Enrolling...' : price === 0 || price === '0' ? 'Enroll Free' : 'Enroll Now'}
+            <button
+              onClick={handleEnroll}
+              disabled={isEnrolling}
+              className="btn-primary w-full text-center mb-3 text-base py-3"
+            >
+              {enrollBtnLabel}
             </button>
 
             {!isEnrolled && (
@@ -211,6 +320,11 @@ export default function CourseDetail() {
                 className="btn-secondary w-full flex items-center justify-center gap-2 mb-5">
                 <Heart className="w-4 h-4" /> Add to Wishlist
               </button>
+            )}
+
+            {/* Payment security badge for paid courses */}
+            {Number(price) > 0 && !isEnrolled && (
+              <p className="text-xs text-slate-400 text-center mb-4">🔒 Secure payment powered by Razorpay</p>
             )}
 
             <div className="space-y-3 text-sm">

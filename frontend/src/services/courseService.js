@@ -119,3 +119,10 @@ export const certificateService = {
   getMy: () => api.get('/certificates/my'),
   get: (id) => api.get(`/certificates/${id}`),
 };
+
+export const paymentService = {
+  createOrder: (amount, currency = 'INR', receipt) =>
+    api.post('/payments/create-order', { amount, currency, receipt }),
+  verifyPayment: (data) => api.post('/payments/verify', data),
+};
+
