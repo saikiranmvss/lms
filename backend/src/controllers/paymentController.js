@@ -27,7 +27,8 @@ export async function createOrder(req, res) {
     const options = {
       amount: Math.round(Number(amount)),
       currency,
-      receipt: receipt || `receipt_${Date.now()}`,
+      // Razorpay receipt max length is 40 characters
+      receipt: (receipt || `rcpt_${Date.now()}`).slice(0, 40),
     };
 
     const razorpay = getRazorpay();

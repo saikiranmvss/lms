@@ -71,10 +71,11 @@ export default function CourseDetail() {
     setPaymentLoading(true);
     let orderData;
     try {
+      const shortId = course.id.toString().slice(-8);
       const res = await paymentService.createOrder(
         amountInPaise,
         'INR',
-        `course_${course.id}_${Date.now()}`
+        `c_${shortId}_${Date.now().toString().slice(-8)}`
       );
       orderData = res.data;
     } catch (err) {
