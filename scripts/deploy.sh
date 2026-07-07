@@ -75,6 +75,9 @@ main() {
   restart_api_service
   nginx_test_reload
 
+  log "Installing Piston execution runtimes..."
+  (cd "${release_dir}" && node scripts/install_runtimes.js) || log "WARN: Piston runtimes installation failed."
+
   health_check
   prune_releases
 

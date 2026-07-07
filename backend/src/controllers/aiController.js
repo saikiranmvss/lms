@@ -119,10 +119,28 @@ export async function runCodeProxy(req, res) {
 
     const pistonUrl = process.env.PISTON_URL || 'http://127.0.0.1:2000';
 
+    // Query Piston runtimes to resolve the installed version for the target language/alias
+    let targetVersion = version;
+    try {
+      const runtimesRes = await fetch(`${pistonUrl}/api/v2/runtimes`);
+      if (runtimesRes.ok) {
+        const runtimes = await runtimesRes.json();
+        const match = runtimes.find(
+          r => r.language.toLowerCase() === language.toLowerCase() ||
+               r.aliases?.some(a => a.toLowerCase() === language.toLowerCase())
+        );
+        if (match) {
+          targetVersion = match.version;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch runtimes list from Piston to match version:', e.message);
+    }
+
     const response = await fetch(`${pistonUrl}/api/v2/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, version, files })
+      body: JSON.stringify({ language, version: targetVersion, files })
     });
 
     if (!response.ok) {
