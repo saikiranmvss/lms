@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+const http = require('http');
+const { URL } = require('url');
 
 const PISTON_URL = process.env.PISTON_URL || 'http://127.0.0.1:2000';
 
@@ -26,14 +28,64 @@ const TARGET_LANGUAGES = [
   'ruby'
 ];
 
+function request(url, options = {}, body = null) {
+  return new Promise((resolve, reject) => {
+    try {
+      const urlObj = new URL(url);
+      const reqOptions = {
+        hostname: urlObj.hostname,
+        port: urlObj.port,
+        path: urlObj.pathname + urlObj.search,
+        method: options.method || 'GET',
+        headers: options.headers || {},
+      };
+
+      if (body) {
+        reqOptions.headers['Content-Length'] = Buffer.byteLength(body);
+      }
+
+      const req = http.request(reqOptions, (res) => {
+        let data = '';
+        res.on('data', chunk => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            statusCode: res.statusCode,
+            statusText: res.statusMessage,
+            body: data
+          });
+        });
+      });
+
+      req.on('error', (err) => {
+        reject(err);
+      });
+
+      if (body) {
+        req.write(body);
+      }
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function main() {
   console.log(`Checking Piston instance at ${PISTON_URL}...`);
   
   // 1. Wait for Piston to start
   let connected = false;
+  let res;
   for (let i = 0; i < 30; i++) {
     try {
-      const res = await fetch(`${PISTON_URL}/api/v2/packages`);
+      res = await request(`${PISTON_URL}/api/v2/packages`);
       if (res.ok) {
         connected = true;
         break;
@@ -41,7 +93,7 @@ async function main() {
     } catch (e) {
       // Ignore and retry
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await sleep(1000);
   }
 
   if (!connected) {
@@ -49,21 +101,26 @@ async function main() {
     process.exit(1);
   }
 
-  // 2. Fetch available packages
-  const res = await fetch(`${PISTON_URL}/api/v2/packages`);
-  if (!res.ok) {
-    console.error(`Failed to fetch packages list from Piston: ${res.statusText}`);
+  // 2. Parse available packages
+  let packages;
+  try {
+    packages = JSON.parse(res.body);
+  } catch (err) {
+    console.error('Failed to parse packages response as JSON:', err);
     process.exit(1);
   }
 
-  const packages = await res.json();
   console.log(`Found ${packages.length} packages in Piston index.`);
 
   // 3. Find latest version of target languages that are not installed
   const toInstall = [];
   for (const lang of TARGET_LANGUAGES) {
     // Find all versions of this language
-    const matches = packages.filter(pkg => pkg.language.toLowerCase() === lang.toLowerCase() || pkg.aliases?.some(a => a.toLowerCase() === lang.toLowerCase()));
+    const matches = packages.filter(pkg => 
+      pkg.language.toLowerCase() === lang.toLowerCase() || 
+      (pkg.aliases && pkg.aliases.some(a => a.toLowerCase() === lang.toLowerCase()))
+    );
+    
     if (matches.length === 0) {
       console.log(`Language "${lang}" not found in Piston repository.`);
       continue;
@@ -76,7 +133,7 @@ async function main() {
       continue;
     }
 
-    // Pick the first version to install (Piston repository matches are usually sorted or we take the first)
+    // Pick the first version to install (Piston repository matches are usually sorted newest-first or we take the first)
     const targetPkg = matches[0];
     toInstall.push(targetPkg);
   }
@@ -91,20 +148,18 @@ async function main() {
   for (const pkg of toInstall) {
     try {
       console.log(`Installing ${pkg.language} (${pkg.version})...`);
-      const postRes = await fetch(`${PISTON_URL}/api/v2/packages`, {
+      const postRes = await request(`${PISTON_URL}/api/v2/packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          language: pkg.language,
-          version: pkg.version
-        })
-      });
+      }, JSON.stringify({
+        language: pkg.language,
+        version: pkg.version
+      }));
 
       if (postRes.ok) {
         console.log(`Successfully installed ${pkg.language} (${pkg.version}).`);
       } else {
-        const errText = await postRes.text();
-        console.error(`Failed to install ${pkg.language}: ${errText}`);
+        console.error(`Failed to install ${pkg.language}: ${postRes.body}`);
       }
     } catch (e) {
       console.error(`Error installing ${pkg.language}:`, e.message);

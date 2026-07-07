@@ -76,7 +76,13 @@ main() {
   nginx_test_reload
 
   log "Installing Piston execution runtimes..."
-  (cd "${release_dir}" && node scripts/install_runtimes.js) || log "WARN: Piston runtimes installation failed."
+  sudo -u "${DEPLOY_USER}" bash -lc "
+    export NVM_DIR=\"\${HOME}/.nvm\"
+    source \"\${NVM_DIR}/nvm.sh\"
+    nvm use ${NODE_VERSION}
+    cd '${release_dir}'
+    node scripts/install_runtimes.js
+  " || log "WARN: Piston runtimes installation failed."
 
   health_check
   prune_releases
