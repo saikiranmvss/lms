@@ -1,10 +1,16 @@
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+/** Lazily initialise Razorpay so the server can start even if keys are absent. */
+function getRazorpay() {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error('RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in environment variables.');
+  }
+  return new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+}
 
 /**
  * POST /api/payments/create-order
@@ -24,6 +30,7 @@ export async function createOrder(req, res) {
       receipt: receipt || `receipt_${Date.now()}`,
     };
 
+    const razorpay = getRazorpay();
     const order = await razorpay.orders.create(options);
 
     return res.status(200).json({
