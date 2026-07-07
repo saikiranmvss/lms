@@ -59,25 +59,12 @@ export default function CourseDetail() {
     }
 
     const course = data.course;
-    const price = Number(course.discount_price || course.price);
-    const amountInPaise = Math.round(price * 100); // price stored in INR
-
-    if (amountInPaise < 100) {
-      // Treat as free
-      enrollMutation.mutate();
-      return;
-    }
-
     setPaymentLoading(true);
     let orderData;
     try {
-      const shortId = course.id.toString().slice(-8);
-      const res = await paymentService.createOrder(
-        amountInPaise,
-        'INR',
-        `c_${shortId}_${Date.now().toString().slice(-8)}`
-      );
-      orderData = res.data;
+      // Backend creates the Razorpay order AND saves a pending transaction
+      const res = await paymentService.createOrder(course.id, 'INR');
+      orderData = res.data.data;          // { order_id, amount, currency }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not initiate payment. Try again.');
       setPaymentLoading(false);
@@ -94,15 +81,18 @@ export default function CourseDetail() {
       order_id: orderData.order_id,
       handler: async (response) => {
         try {
-          await paymentService.verifyPayment({
-            razorpay_order_id: response.razorpay_order_id,
+          // Backend verifies + auto-enrolls + stores completed transaction
+          const verifyRes = await paymentService.verifyPayment({
+            razorpay_order_id:  response.razorpay_order_id,
             razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature,
+            razorpay_signature:  response.razorpay_signature,
           });
-          toast.success('Payment successful! Enrolling you...');
-          enrollMutation.mutate();
-        } catch {
-          toast.error('Payment verification failed. Contact support if amount was deducted.');
+          const { course_slug } = verifyRes.data.data;
+          toast.success('Payment successful! You are now enrolled 🎉');
+          queryClient.invalidateQueries(['course', slug]);
+          navigate(`/learn/${course_slug || slug}`);
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Payment verification failed. Contact support if amount was deducted.');
         } finally {
           setPaymentLoading(false);
         }
@@ -122,6 +112,8 @@ export default function CourseDetail() {
 
     const rzp = new window.Razorpay(options);
     rzp.on('payment.failed', (response) => {
+      // Notify backend so the transaction is marked failed in DB
+      paymentService.markFailed(orderData.order_id, response.error.description).catch(() => {});
       toast.error(`Payment failed: ${response.error.description}`);
       setPaymentLoading(false);
     });

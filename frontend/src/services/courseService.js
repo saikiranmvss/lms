@@ -121,8 +121,18 @@ export const certificateService = {
 };
 
 export const paymentService = {
-  createOrder: (amount, currency = 'INR', receipt) =>
-    api.post('/payments/create-order', { amount, currency, receipt }),
+  /** Create Razorpay order — backend saves a pending transaction */
+  createOrder: (courseId, currency = 'INR') =>
+    api.post('/payments/create-order', { courseId, currency }),
+
+  /** Verify signature — backend marks transaction complete + auto-enrolls */
   verifyPayment: (data) => api.post('/payments/verify', data),
+
+  /** Notify backend that payment failed (Razorpay payment.failed event) */
+  markFailed: (razorpay_order_id, error_description) =>
+    api.post('/payments/failed', { razorpay_order_id, error_description }),
+
+  /** Student's own transaction history */
+  getMyTransactions: () => api.get('/payments/my'),
 };
 
